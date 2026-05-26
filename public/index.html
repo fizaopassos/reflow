@@ -1,0 +1,292 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#254086">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Reflow">
+<title>Reflow — Leitura de Medidores</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ── LOGIN ──────────────────────────────────────── -->
+  <div class="view" id="view-login">
+    <div class="login-wrap">
+      <div class="login-logo">
+        <img src="/logo.png" alt="Retha">
+        <p class="login-tagline">Reflow · Leitura de Medidores</p>
+      </div>
+      <div class="login-card">
+        <h2>Entrar na plataforma</h2>
+        <form id="form-login">
+          <div class="field">
+            <label for="login-email">Email</label>
+            <input type="email" id="login-email" placeholder="seu@email.com" required autocomplete="email">
+          </div>
+          <div class="field">
+            <label for="login-senha">Senha</label>
+            <input type="password" id="login-senha" placeholder="••••••••" required autocomplete="current-password">
+          </div>
+          <button type="submit" class="btn-primary">Entrar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── DASHBOARD ──────────────────────────────────── -->
+  <div class="view" id="view-dashboard">
+    <div class="topbar">
+      <div class="topbar-inner">
+        <img src="/logo.png" alt="Retha" class="logo">
+        <span class="topbar-greeting" id="topbar-nome"></span>
+      </div>
+      <div class="topbar-title">Reflow</div>
+      <div class="topbar-sub" id="dashboard-mes"></div>
+    </div>
+    <div class="section-header" style="padding-top:20px">
+      <span class="section-title">Condomínios</span>
+    </div>
+    <div id="dashboard-cards" class="cards-grid"></div>
+  </div>
+
+  <!-- ── MEDIÇÕES ────────────────────────────────────── -->
+  <div class="view" id="view-medicoes">
+    <div class="page-header">
+      <button class="btn-back" onclick="Router.go('dashboard')">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 12L6 8l4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        Voltar
+      </button>
+      <h2 id="medicoes-titulo">Medições</h2>
+    </div>
+    <div class="section-header">
+      <span class="section-title" id="medicoes-sub"></span>
+    </div>
+    <div id="medicoes-grid" class="cards-grid"></div>
+  </div>
+
+  <!-- ── LEITURA ─────────────────────────────────────── -->
+  <div class="view" id="view-leitura">
+    <div class="page-header">
+      <button class="btn-back" onclick="history.back()">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 12L6 8l4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        Voltar
+      </button>
+      <h2 id="leitura-unidade">Leitura</h2>
+    </div>
+
+    <input type="hidden" id="leitura-medidor-id">
+    <input type="hidden" id="leitura-id-edicao">
+    <input type="hidden" id="leitura-dia">
+    <input type="hidden" id="leitura-mes">
+    <input type="hidden" id="leitura-ano">
+
+    <div id="leitura-existente" style="display:none;padding:0 16px 14px"></div>
+
+    <!-- Foto obrigatória -->
+    <div style="padding:0 16px 6px">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">
+        Foto do medidor <span style="color:var(--danger)">*</span>
+      </div>
+    </div>
+
+    <div class="capture-zone" id="captureZone" onclick="document.getElementById('leitura-file').click()">
+      <input type="file" id="leitura-file" accept="image/*" capture="environment">
+      <div id="leitura-idle" class="capture-idle">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+          <rect x="2" y="10" width="44" height="32" rx="4" stroke="#254086" stroke-width="1.5"/>
+          <circle cx="24" cy="25" r="8" stroke="#254086" stroke-width="1.5"/>
+          <circle cx="24" cy="25" r="3.5" fill="#254086" opacity=".3"/>
+          <path d="M16 10l3-6h10l3 6" stroke="#254086" stroke-width="1.5" stroke-linejoin="round"/>
+          <circle cx="40" cy="17" r="2" fill="#254086" opacity=".4"/>
+        </svg>
+        <p style="font-weight:500;color:var(--text2)">Fotografar medidor</p>
+        <p style="font-size:12px;color:var(--text3)">Toque para abrir a câmera</p>
+      </div>
+      <img id="leitura-preview" alt="Preview do medidor" style="display:none">
+    </div>
+
+    <!-- Formulário de leitura — aparece após tirar foto -->
+    <form id="form-leitura" class="form-leitura" style="display:none">
+      <div class="field">
+        <label for="leitura-valor-input">Valor da leitura (m³) <span style="color:var(--danger)">*</span></label>
+        <input type="number" id="leitura-valor-input" step="0.001" placeholder="ex: 12345.678" required>
+      </div>
+      <div class="field">
+        <label for="leitura-obs-input">Observações (opcional)</label>
+        <input type="text" id="leitura-obs-input" placeholder="ex: medidor com sujeira, difícil leitura">
+      </div>
+      <button type="submit" id="form-leitura-submit" class="btn-primary">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8l4 4 8-8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Salvar leitura
+      </button>
+    </form>
+  </div>
+
+  <!-- ── ADMIN ───────────────────────────────────────── -->
+  <div class="view" id="view-admin">
+    <div class="topbar">
+      <div class="topbar-inner">
+        <img src="/logo.png" alt="Retha" class="logo">
+      </div>
+      <div class="topbar-title">Administração</div>
+    </div>
+
+    <div class="admin-tabs">
+      <button class="admin-tab active" onclick="switchTab('condos')">Condomínios</button>
+      <button class="admin-tab" onclick="switchTab('unidades')">Unidades</button>
+      <button class="admin-tab" onclick="switchTab('medidores')">Medidores</button>
+      <button class="admin-tab" onclick="switchTab('users')">Usuários</button>
+    </div>
+
+    <!-- Tab: Condomínios -->
+    <div class="admin-panel active" id="tab-condos">
+      <div class="form-card">
+        <div class="admin-section">
+          <h3>Novo condomínio</h3>
+          <form id="form-novo-condo">
+            <div class="form-row">
+              <div class="field"><label>Nome</label><input type="text" id="condo-nome" placeholder="Nome do condomínio" required></div>
+              <div class="field"><label>Cidade</label><input type="text" id="condo-cidade" placeholder="Cidade"></div>
+            </div>
+            <div class="field"><label>Endereço</label><input type="text" id="condo-endereco" placeholder="Rua, número"></div>
+            <button type="submit" class="btn-primary btn-sm" style="width:auto;margin-top:4px">+ Adicionar</button>
+          </form>
+        </div>
+      </div>
+      <div class="section-header"><span class="section-title">Cadastrados</span></div>
+      <div id="admin-condos-list" class="list" style="padding:0 16px 16px"></div>
+    </div>
+
+    <!-- Tab: Unidades -->
+    <div class="admin-panel" id="tab-unidades">
+      <div class="form-card">
+        <div class="admin-section">
+          <h3>Nova unidade</h3>
+          <form id="form-nova-unidade">
+            <div class="field">
+              <label>Condomínio</label>
+              <select id="unidade-condo-id" required>
+                <option value="">Selecione o condomínio...</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <div class="field"><label>Identificador</label><input type="text" id="unidade-ident" placeholder="ex: Apto 101" required></div>
+              <div class="field"><label>Andar</label><input type="text" id="unidade-andar" placeholder="ex: 1º andar"></div>
+            </div>
+            <div class="field"><label>Bloco</label><input type="text" id="unidade-bloco" placeholder="ex: Bloco A"></div>
+            <button type="submit" class="btn-primary btn-sm" style="width:auto;margin-top:4px">+ Adicionar</button>
+          </form>
+        </div>
+      </div>
+      <div class="section-header"><span class="section-title">Cadastradas</span></div>
+      <div id="admin-unidades-list" class="list" style="padding:0 16px 16px"></div>
+    </div>
+
+    <!-- Tab: Medidores -->
+    <div class="admin-panel" id="tab-medidores">
+      <div class="form-card">
+        <div class="admin-section">
+          <h3>Novo medidor</h3>
+          <form id="form-novo-medidor">
+            <div class="field">
+              <label>Condomínio</label>
+              <select id="medidor-condo-id" required>
+                <option value="">Selecione o condomínio...</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Unidade</label>
+              <select id="medidor-unidade-id" required>
+                <option value="">Selecione a unidade...</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <div class="field">
+                <label>Tipo</label>
+                <select id="medidor-tipo">
+                  <option value="AGUA">Água</option>
+                  <option value="ENERGIA">Energia</option>
+                  <option value="GAS">Gás</option>
+                </select>
+              </div>
+              <div class="field"><label>Nº de série</label><input type="text" id="medidor-serie" placeholder="opcional"></div>
+            </div>
+            <div class="field"><label>Localização</label><input type="text" id="medidor-local" placeholder="ex: Corredor térreo"></div>
+            <button type="submit" class="btn-primary btn-sm" style="width:auto;margin-top:4px">+ Adicionar</button>
+          </form>
+        </div>
+      </div>
+      <div class="section-header"><span class="section-title">Cadastrados</span></div>
+      <div id="admin-medidores-list" class="list" style="padding:0 16px 16px"></div>
+    </div>
+
+    <!-- Tab: Usuários -->
+    <div class="admin-panel" id="tab-users">
+      <div class="form-card">
+        <div class="admin-section">
+          <h3>Novo usuário</h3>
+          <form id="form-novo-user">
+            <div class="form-row">
+              <div class="field"><label>Nome</label><input type="text" id="user-nome" placeholder="Nome completo" required></div>
+              <div class="field">
+                <label>Perfil</label>
+                <select id="user-role">
+                  <option value="LEITOR">Leitor</option>
+                  <option value="GESTOR">Gestor</option>
+                  <option value="ADMIN">Admin</option>
+                </select>
+              </div>
+            </div>
+            <div class="field"><label>Email</label><input type="email" id="user-email" placeholder="email@exemplo.com" required></div>
+            <div class="field"><label>Senha</label><input type="password" id="user-senha" placeholder="Senha inicial" required></div>
+            <button type="submit" class="btn-primary btn-sm" style="width:auto;margin-top:4px">+ Criar usuário</button>
+          </form>
+        </div>
+      </div>
+      <div class="section-header"><span class="section-title">Usuários</span></div>
+      <div id="admin-users-list" class="list" style="padding:0 16px 16px"></div>
+    </div>
+  </div>
+
+  <!-- ── NAVBAR ──────────────────────────────────────── -->
+  <nav id="navbar" style="display:none">
+    <button data-page="dashboard">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg>
+      Dashboard
+    </button>
+    <button id="nav-admin" data-page="admin" style="display:none">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="6" r="3.5" stroke="currentColor" stroke-width="1.5"/><path d="M3 17c0-3.5 3.1-6 7-6s7 2.5 7 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      Admin
+    </button>
+    <button id="btn-logout">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M8 10h7m0 0l-2.5-2.5M15 10l-2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M12 4H5a1 1 0 00-1 1v10a1 1 0 001 1h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      Sair
+    </button>
+  </nav>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- MODAL DE CONFIRMAÇÃO -->
+  <div class="modal-backdrop" id="modalBackdrop" onclick="fecharModal()"></div>
+  <div class="modal" id="modal">
+    <div class="modal-icon" id="modalIcon"></div>
+    <h3 class="modal-title" id="modalTitle"></h3>
+    <p class="modal-msg" id="modalMsg"></p>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="fecharModal()">Cancelar</button>
+      <button class="btn-confirm" id="modalConfirm">Confirmar</button>
+    </div>
+  </div>
+</div>
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

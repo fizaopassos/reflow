@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0f1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Medidores">
+<title>Leitor de Medidores</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;500;600&display=swap">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ── LOGIN ────────────────────────────────────────── -->
+  <div class="view" id="view-login">
+    <div class="login-wrap">
+      <div class="login-logo">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+          <circle cx="24" cy="24" r="20" stroke="#3af0c8" stroke-width="2"/>
+          <circle cx="24" cy="24" r="10" stroke="#3af0c8" stroke-width="1.5"/>
+          <circle cx="24" cy="24" r="3" fill="#3af0c8"/>
+          <line x1="24" y1="4" x2="24" y2="10" stroke="#3af0c8" stroke-width="2"/>
+          <line x1="24" y1="38" x2="24" y2="44" stroke="#3af0c8" stroke-width="2"/>
+          <line x1="4"  y1="24" x2="10" y2="24" stroke="#3af0c8" stroke-width="2"/>
+          <line x1="38" y1="24" x2="44" y2="24" stroke="#3af0c8" stroke-width="2"/>
+        </svg>
+        <h1>MEDIDOR<span class="accent">AI</span></h1>
+        <p>Leitura inteligente de medidores</p>
+      </div>
+      <form id="form-login" class="login-form">
+        <div class="field">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" placeholder="seu@email.com" required autocomplete="email">
+        </div>
+        <div class="field">
+          <label for="login-senha">Senha</label>
+          <input type="password" id="login-senha" placeholder="••••••••" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn-primary">Entrar</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── DASHBOARD ─────────────────────────────────────── -->
+  <div class="view" id="view-dashboard">
+    <div class="page-header">
+      <h2>Dashboard</h2>
+      <span id="dashboard-mes" class="text-muted"></span>
+    </div>
+    <div id="dashboard-cards" class="cards-grid"></div>
+  </div>
+
+  <!-- ── MEDIÇÕES (grid do condomínio) ─────────────────── -->
+  <div class="view" id="view-medicoes">
+    <div class="page-header">
+      <button class="btn-back" onclick="Router.go('dashboard')">← Voltar</button>
+      <h2 id="medicoes-titulo">Medições</h2>
+    </div>
+    <div id="medicoes-grid" class="cards-grid"></div>
+  </div>
+
+  <!-- ── LEITURA ────────────────────────────────────────── -->
+  <div class="view" id="view-leitura">
+    <div class="page-header">
+      <button class="btn-back" onclick="history.back()">← Voltar</button>
+      <h2 id="leitura-unidade">Leitura</h2>
+    </div>
+
+    <input type="hidden" id="leitura-medidor-id">
+    <input type="hidden" id="leitura-mes">
+    <input type="hidden" id="leitura-ano">
+
+    <!-- Zona de captura -->
+    <div class="capture-zone" onclick="document.getElementById('leitura-file').click()">
+      <input type="file" id="leitura-file" accept="image/*" capture="environment">
+      <div id="leitura-idle" class="capture-idle">
+        <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
+          <rect x="2" y="10" width="48" height="34" rx="4" stroke="#3af0c8" stroke-width="1.5"/>
+          <circle cx="26" cy="26" r="9" stroke="#3af0c8" stroke-width="1.5"/>
+          <circle cx="26" cy="26" r="4" fill="#3af0c8" opacity=".4"/>
+          <path d="M18 10l3-6h10l3 6" stroke="#3af0c8" stroke-width="1.5" stroke-linejoin="round"/>
+        </svg>
+        <p>Toque para fotografar</p>
+      </div>
+      <img id="leitura-preview" alt="Preview" style="display:none">
+    </div>
+
+    <button id="btn-analisar" class="btn-primary" style="display:none">Analisar com IA</button>
+
+    <!-- Resultado da IA -->
+    <div id="leitura-resultado" class="result-panel" style="display:none">
+      <div class="result-valor" id="leitura-valor-display"></div>
+      <div class="result-conf"  id="leitura-conf"></div>
+      <div class="result-obs"   id="leitura-obs"></div>
+      <div class="result-actions">
+        <button id="btn-usar-manual" class="btn-secondary">Digitar manualmente</button>
+      </div>
+    </div>
+
+    <!-- Formulário de confirmação/manual -->
+    <form id="form-leitura" class="form-leitura" style="display:none">
+      <div class="field">
+        <label for="leitura-valor-input">Valor da leitura (m³)</label>
+        <input type="number" id="leitura-valor-input" step="0.001" placeholder="12345.678" required>
+      </div>
+      <button type="submit" class="btn-primary">Salvar leitura</button>
+    </form>
+
+    <!-- Link para digitar manual sem foto -->
+    <button class="btn-text" onclick="document.getElementById('leitura-form-manual').style.display='block'; document.getElementById('form-leitura').style.display='block'">
+      Digitar sem foto
+    </button>
+    <div id="leitura-form-manual" style="display:none">
+      <!-- já mostrado via form-leitura acima -->
+    </div>
+  </div>
+
+  <!-- ── ADMIN ──────────────────────────────────────────── -->
+  <div class="view" id="view-admin">
+    <div class="page-header"><h2>Administração</h2></div>
+
+    <section class="admin-section">
+      <h3>Condomínios</h3>
+      <form id="form-novo-condo" class="inline-form">
+        <input type="text" id="condo-nome" placeholder="Nome do condomínio" required>
+        <input type="text" id="condo-endereco" placeholder="Endereço">
+        <button type="submit" class="btn-primary btn-sm">+ Adicionar</button>
+      </form>
+      <div id="admin-condos-list" class="list"></div>
+    </section>
+
+    <section class="admin-section">
+      <h3>Usuários</h3>
+      <form id="form-novo-user" class="inline-form">
+        <input type="text"     id="user-nome"  placeholder="Nome" required>
+        <input type="email"    id="user-email" placeholder="Email" required>
+        <input type="password" id="user-senha" placeholder="Senha" required>
+        <select id="user-role">
+          <option value="LEITOR">Leitor</option>
+          <option value="GESTOR">Gestor</option>
+          <option value="ADMIN">Admin</option>
+        </select>
+        <button type="submit" class="btn-primary btn-sm">+ Criar</button>
+      </form>
+      <div id="admin-users-list" class="list"></div>
+    </section>
+  </div>
+
+  <!-- ── NAVBAR ─────────────────────────────────────────── -->
+  <nav id="navbar" style="display:none">
+    <button data-page="dashboard">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="2" y="2" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="2" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="12" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="12" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg>
+      <span>Dashboard</span>
+    </button>
+    <button id="nav-admin" data-page="admin" style="display:none">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="7" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M3 19c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <span>Admin</span>
+    </button>
+    <button id="btn-logout">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M9 11h8m0 0l-3-3m3 3l-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M13 4H5a1 1 0 00-1 1v12a1 1 0 001 1h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <span>Sair</span>
+    </button>
+  </nav>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+
+</div>
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

@@ -27,6 +27,37 @@ async function registrar(req, res) {
     return res.status(400).json({ erro: 'medidor_id, valor, referencia_dia, referencia_mes e referencia_ano são obrigatórios.' });
   }
 
+  // Validação de valor
+  const valorNum = parseFloat(valor);
+  if (isNaN(valorNum) || valorNum < 0) {
+    return res.status(400).json({ erro: 'Valor inválido.' });
+  }
+  if (valorNum >= 9999999) {
+    return res.status(400).json({ erro: 'Valor muito alto. Verifique se não digitou errado.' });
+  }
+
+  // Validação: leitura não pode ser menor que a última registrada
+  const ultimaLeitura = await prisma.leitura.findFirst({
+    where: { medidor_id },
+    orderBy: [
+      { referencia_ano: 'desc' },
+      { referencia_mes: 'desc' },
+      { referencia_dia: 'desc' },
+    ],
+  });
+  if (ultimaLeitura && valorNum < parseFloat(ultimaLeitura.valor)) {
+    return res.status(400).json({
+      erro: `Leitura inválida. O valor ${valorNum} é menor que a última leitura registrada (${parseFloat(ultimaLeitura.valor).toFixed(3)} m³). Medidores só crescem.`
+    });
+  }
+
+  // Busca empresa atual da unidade para snapshot
+  const medidorInfo = await prisma.medidor.findUnique({
+    where: { id: medidor_id },
+    include: { unidade: { select: { empresa: true } } },
+  });
+  const empresa_snapshot = medidorInfo?.unidade?.empresa || null;
+
   let foto_url = null;
   if (req.file) {
     const uploadDir = path.join(__dirname, '../../uploads');
@@ -42,6 +73,7 @@ async function registrar(req, res) {
         medidor_id,
         user_id: req.user.id,
         valor: parseFloat(valor),
+        empresa_snapshot,
         metodo: metodo || 'MANUAL',
         fonte: 'APP',
         confianca,
@@ -107,7 +139,7 @@ async function listar(req, res) {
         include: {
           unidade: {
             select: {
-              id: true, identificador: true, andar: true, bloco: true,
+              id: true, identificador: true, bloco: true, empresa: true,
               condominio: { select: { id: true, nome: true } }
             }
           }
@@ -218,7 +250,7 @@ async function relatorio(req, res) {
     include: {
       medidor: {
         include: {
-          unidade: { select: { identificador: true, andar: true, bloco: true } }
+          unidade: { select: { identificador: true, bloco: true, empresa: true } }
         }
       },
       user: { select: { nome: true } },
@@ -253,7 +285,8 @@ async function relatorio(req, res) {
     if (!porMedidor[l.medidor_id]) {
       porMedidor[l.medidor_id] = {
         unidade: l.medidor.unidade.identificador,
-        andar: l.medidor.unidade.andar,
+        bloco: l.medidor.unidade.bloco,
+        empresa: l.medidor.unidade.empresa,
         leituras: [],
       };
     }
@@ -268,7 +301,8 @@ async function relatorio(req, res) {
     totalConsumo += consumo > 0 ? consumo : 0;
     return {
       unidade: data.unidade,
-      andar: data.andar,
+      bloco: data.bloco,
+      empresa: data.empresa,
       medidor_id,
       primeira_leitura: primeira,
       ultima_leitura: ultima,

@@ -6,74 +6,80 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Iniciando seed...');
 
-  // Admin
+  // Usuários
   const admin = await prisma.user.upsert({
-    where: { email: 'admin@medidor.app' },
+    where: { email: 'admin@reflow.app' },
     update: {},
     create: {
-      email: 'admin@medidor.app',
+      email: 'admin@reflow.app',
       senha: await bcrypt.hash('admin123', 10),
       nome: 'Administrador',
       role: 'ADMIN',
     },
   });
-  console.log('✓ Admin criado:', admin.email);
 
-  // Gestor de exemplo
   const gestor = await prisma.user.upsert({
-    where: { email: 'gestor@medidor.app' },
+    where: { email: 'gestor@reflow.app' },
     update: {},
     create: {
-      email: 'gestor@medidor.app',
+      email: 'gestor@reflow.app',
       senha: await bcrypt.hash('gestor123', 10),
       nome: 'Gestor Exemplo',
       role: 'GESTOR',
     },
   });
-  console.log('✓ Gestor criado:', gestor.email);
 
-  // Leitor de exemplo
   const leitor = await prisma.user.upsert({
-    where: { email: 'leitor@medidor.app' },
+    where: { email: 'leitor@reflow.app' },
     update: {},
     create: {
-      email: 'leitor@medidor.app',
+      email: 'leitor@reflow.app',
       senha: await bcrypt.hash('leitor123', 10),
       nome: 'Leitor Exemplo',
       role: 'LEITOR',
     },
   });
-  console.log('✓ Leitor criado:', leitor.email);
 
-  // Condomínio de exemplo
-  const condo = await prisma.condominio.upsert({
-    where: { id: 'seed-condo-01' },
+  console.log('✓ Usuários criados');
+
+  // Condomínio (galpão)
+  const galpao = await prisma.condominio.upsert({
+    where: { id: 'seed-galpao-01' },
     update: {},
     create: {
-      id: 'seed-condo-01',
-      nome: 'Residencial Exemplo',
-      endereco: 'Rua das Flores, 100',
-      cidade: 'São Paulo',
+      id: 'seed-galpao-01',
+      nome: 'Galpão Retha Embu',
+      endereco: 'Rod. Régis Bittencourt, km 282',
+      cidade: 'Embu das Artes',
     },
   });
-  console.log('✓ Condomínio criado:', condo.nome);
 
-  // Vincula gestor ao condomínio
+  // Vincula gestor e leitor ao galpão
   await prisma.condominioGestor.upsert({
-    where: { condominio_id_user_id: { condominio_id: condo.id, user_id: gestor.id } },
+    where: { condominio_id_user_id: { condominio_id: galpao.id, user_id: gestor.id } },
     update: {},
-    create: { condominio_id: condo.id, user_id: gestor.id },
+    create: { condominio_id: galpao.id, user_id: gestor.id },
   });
 
-  // Unidades + medidores de exemplo
-  const unidades = ['Apto 101', 'Apto 102', 'Apto 201', 'Apto 202'];
-  for (const ident of unidades) {
+  await prisma.condominioLeitor.upsert({
+    where: { condominio_id_user_id: { condominio_id: galpao.id, user_id: leitor.id } },
+    update: {},
+    create: { condominio_id: galpao.id, user_id: leitor.id },
+  });
+
+  console.log('✓ Galpão criado e vínculos feitos');
+
+  // Unidades com empresas
+  const unidades = [
+    { bloco: 'Bloco A', identificador: 'Unidade 01', empresa: 'Amazon Logística Ltda' },
+    { bloco: 'Bloco A', identificador: 'Unidade 02', empresa: 'Mercado Livre S.A.' },
+    { bloco: 'Bloco B', identificador: 'Unidade 01', empresa: 'DHL Supply Chain' },
+    { bloco: 'Bloco B', identificador: 'Unidade 02', empresa: null },
+  ];
+
+  for (const u of unidades) {
     const unidade = await prisma.unidade.create({
-      data: {
-        condominio_id: condo.id,
-        identificador: ident,
-        andar: ident.includes('1') ? '1º andar' : '2º andar',
-      },
+      data: { condominio_id: galpao.id, ...u },
     });
     await prisma.medidor.create({
       data: {
@@ -83,12 +89,12 @@ async function main() {
       },
     });
   }
-  console.log(`✓ ${unidades.length} unidades + medidores criados`);
 
+  console.log('✓ Unidades e medidores criados');
   console.log('\n✅ Seed concluído!');
-  console.log('   admin@medidor.app   / admin123');
-  console.log('   gestor@medidor.app  / gestor123');
-  console.log('   leitor@medidor.app  / leitor123');
+  console.log('   admin@reflow.app   / admin123');
+  console.log('   gestor@reflow.app  / gestor123');
+  console.log('   leitor@reflow.app  / leitor123');
 }
 
 main()

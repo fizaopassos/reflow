@@ -75,11 +75,14 @@
   <!-- ── LEITURA ─────────────────────────────────────── -->
   <div class="view" id="view-leitura">
     <div class="page-header">
-      <button class="btn-back" onclick="history.back()">
+      <button class="btn-back" onclick="voltarDeLeitura()">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 12L6 8l4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         Voltar
       </button>
-      <h2 id="leitura-unidade">Leitura</h2>
+      <div>
+        <h2 id="leitura-unidade">Leitura</h2>
+        <div id="leitura-empresa-sub" style="font-size:12px;color:var(--text3);margin-top:2px"></div>
+      </div>
     </div>
 
     <input type="hidden" id="leitura-medidor-id">
@@ -97,7 +100,7 @@
       </div>
     </div>
 
-    <div class="capture-zone" id="captureZone" onclick="document.getElementById('leitura-file').click()">
+    <div class="capture-zone" id="captureZone">
       <input type="file" id="leitura-file" accept="image/*" capture="environment">
       <div id="leitura-idle" class="capture-idle">
         <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
@@ -149,15 +152,18 @@
     <!-- Tab: Condomínios -->
     <div class="admin-panel active" id="tab-condos">
       <div class="form-card">
-        <div class="admin-section">
-          <h3>Novo condomínio</h3>
+        <button class="btn-accordion" onclick="toggleAccordion('form-body-condo')">
+          <span>+ Novo condomínio</span>
+          <svg class="accordion-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <div id="form-body-condo" class="accordion-body" style="display:none">
           <form id="form-novo-condo">
             <div class="form-row">
               <div class="field"><label>Nome</label><input type="text" id="condo-nome" placeholder="Nome do condomínio" required></div>
               <div class="field"><label>Cidade</label><input type="text" id="condo-cidade" placeholder="Cidade"></div>
             </div>
             <div class="field"><label>Endereço</label><input type="text" id="condo-endereco" placeholder="Rua, número"></div>
-            <button type="submit" class="btn-primary btn-sm" style="width:auto;margin-top:4px">+ Adicionar</button>
+            <button type="submit" class="btn-primary btn-sm" style="width:auto;margin-top:4px">Salvar</button>
           </form>
         </div>
       </div>
@@ -167,22 +173,31 @@
 
     <!-- Tab: Unidades -->
     <div class="admin-panel" id="tab-unidades">
+      <div class="form-card" style="margin-bottom:10px">
+        <div class="field" style="margin-bottom:0">
+          <label>Filtrar por condomínio</label>
+          <select id="filtro-unidade-condo" onchange="carregarUnidadesAdmin(this.value)">
+            <option value="">Selecione um condomínio...</option>
+          </select>
+        </div>
+      </div>
       <div class="form-card">
-        <div class="admin-section">
-          <h3>Nova unidade</h3>
+        <button class="btn-accordion" onclick="toggleAccordion('form-body-unidade')">
+          <span>+ Nova unidade</span>
+          <svg class="accordion-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <div id="form-body-unidade" class="accordion-body" style="display:none">
           <form id="form-nova-unidade">
             <div class="field">
               <label>Condomínio</label>
-              <select id="unidade-condo-id" required>
-                <option value="">Selecione o condomínio...</option>
-              </select>
+              <select id="unidade-condo-id" required><option value="">Selecione o condomínio...</option></select>
             </div>
             <div class="form-row">
-              <div class="field"><label>Identificador</label><input type="text" id="unidade-ident" placeholder="ex: Apto 101" required></div>
-              <div class="field"><label>Andar</label><input type="text" id="unidade-andar" placeholder="ex: 1º andar"></div>
+              <div class="field"><label>Bloco</label><input type="text" id="unidade-bloco" placeholder="ex: Bloco A, Módulo 1"></div>
+              <div class="field"><label>Identificador</label><input type="text" id="unidade-ident" placeholder="ex: Unidade 01, Box 14" required></div>
             </div>
-            <div class="field"><label>Bloco</label><input type="text" id="unidade-bloco" placeholder="ex: Bloco A"></div>
-            <button type="submit" class="btn-primary btn-sm" style="width:auto;margin-top:4px">+ Adicionar</button>
+            <div class="field"><label>Empresa ocupante</label><input type="text" id="unidade-empresa" placeholder="ex: Amazon Logística Ltda"></div>
+            <button type="submit" class="btn-primary btn-sm" style="width:auto;margin-top:4px">Salvar</button>
           </form>
         </div>
       </div>
@@ -192,21 +207,28 @@
 
     <!-- Tab: Medidores -->
     <div class="admin-panel" id="tab-medidores">
+      <div class="form-card" style="margin-bottom:10px">
+        <div class="field" style="margin-bottom:0">
+          <label>Filtrar por condomínio</label>
+          <select id="filtro-medidor-condo" onchange="carregarMedidoresAdmin(this.value)">
+            <option value="">Selecione um condomínio...</option>
+          </select>
+        </div>
+      </div>
       <div class="form-card">
-        <div class="admin-section">
-          <h3>Novo medidor</h3>
+        <button class="btn-accordion" onclick="toggleAccordion('form-body-medidor')">
+          <span>+ Novo medidor</span>
+          <svg class="accordion-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <div id="form-body-medidor" class="accordion-body" style="display:none">
           <form id="form-novo-medidor">
             <div class="field">
               <label>Condomínio</label>
-              <select id="medidor-condo-id" required>
-                <option value="">Selecione o condomínio...</option>
-              </select>
+              <select id="medidor-condo-id" required><option value="">Selecione o condomínio...</option></select>
             </div>
             <div class="field">
               <label>Unidade</label>
-              <select id="medidor-unidade-id" required>
-                <option value="">Selecione a unidade...</option>
-              </select>
+              <select id="medidor-unidade-id" required><option value="">Selecione a unidade...</option></select>
             </div>
             <div class="form-row">
               <div class="field">
@@ -220,7 +242,7 @@
               <div class="field"><label>Nº de série</label><input type="text" id="medidor-serie" placeholder="opcional"></div>
             </div>
             <div class="field"><label>Localização</label><input type="text" id="medidor-local" placeholder="ex: Corredor térreo"></div>
-            <button type="submit" class="btn-primary btn-sm" style="width:auto;margin-top:4px">+ Adicionar</button>
+            <button type="submit" class="btn-primary btn-sm" style="width:auto;margin-top:4px">Salvar</button>
           </form>
         </div>
       </div>
@@ -231,8 +253,11 @@
     <!-- Tab: Usuários -->
     <div class="admin-panel" id="tab-users">
       <div class="form-card">
-        <div class="admin-section">
-          <h3>Novo usuário</h3>
+        <button class="btn-accordion" onclick="toggleAccordion('form-body-user')">
+          <span>+ Novo usuário</span>
+          <svg class="accordion-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <div id="form-body-user" class="accordion-body" style="display:none">
           <form id="form-novo-user">
             <div class="form-row">
               <div class="field"><label>Nome</label><input type="text" id="user-nome" placeholder="Nome completo" required></div>
@@ -247,7 +272,7 @@
             </div>
             <div class="field"><label>Email</label><input type="email" id="user-email" placeholder="email@exemplo.com" required></div>
             <div class="field"><label>Senha</label><input type="password" id="user-senha" placeholder="Senha inicial" required></div>
-            <button type="submit" class="btn-primary btn-sm" style="width:auto;margin-top:4px">+ Criar usuário</button>
+            <button type="submit" class="btn-primary btn-sm" style="width:auto;margin-top:4px">Salvar</button>
           </form>
         </div>
       </div>
@@ -273,6 +298,17 @@
   </nav>
 
   <div class="toast" id="toast"></div>
+
+  <!-- MODAL DE EDIÇÃO -->
+  <div class="modal-backdrop" id="editBackdrop" onclick="fecharModalEdit()"></div>
+  <div class="modal" id="editModal">
+    <h3 class="modal-title" id="editModalTitle">Editar</h3>
+    <div id="editModalBody"></div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn-secondary" onclick="fecharModalEdit()">Cancelar</button>
+      <button class="btn-confirm" id="editModalSave">Salvar</button>
+    </div>
+  </div>
 
   <!-- MODAL DE CONFIRMAÇÃO -->
   <div class="modal-backdrop" id="modalBackdrop" onclick="fecharModal()"></div>

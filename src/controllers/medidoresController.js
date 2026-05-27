@@ -16,21 +16,21 @@ async function listarUnidades(req, res) {
 }
 
 async function criarUnidade(req, res) {
-  const { condominio_id, identificador, andar, bloco } = req.body;
+  const { condominio_id, identificador, bloco, empresa } = req.body;
   if (!condominio_id || !identificador) {
     return res.status(400).json({ erro: 'condominio_id e identificador são obrigatórios.' });
   }
   const unidade = await prisma.unidade.create({
-    data: { condominio_id, identificador, andar, bloco },
+    data: { condominio_id, identificador, bloco, empresa },
   });
   res.status(201).json(unidade);
 }
 
 async function atualizarUnidade(req, res) {
-  const { identificador, andar, bloco, ativo } = req.body;
+  const { identificador, bloco, empresa, ativo } = req.body;
   const unidade = await prisma.unidade.update({
     where: { id: req.params.id },
-    data: { identificador, andar, bloco, ativo },
+    data: { identificador, bloco, empresa, ativo },
   });
   res.json(unidade);
 }
@@ -48,7 +48,7 @@ async function listarMedidores(req, res) {
     include: {
       unidade: {
         select: {
-          id: true, identificador: true, andar: true, bloco: true,
+          id: true, identificador: true, bloco: true, empresa: true,
           condominio: { select: { id: true, nome: true } }
         }
       },

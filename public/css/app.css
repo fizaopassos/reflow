@@ -778,3 +778,24 @@ input::placeholder { color: var(--text3); }
 .condo-inner-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
 .condo-inner-panel { display: none; }
 .condo-inner-panel.active { display: block; }
+
+/* ── ACCORDION ───────────────────────────────────────── */
+.btn-accordion {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: transparent;
+  border: none;
+  padding: 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--sans);
+  color: var(--blue);
+  cursor: pointer;
+  transition: color .15s;
+}
+.btn-accordion:hover { color: var(--blue-mid); }
+.btn-accordion .accordion-icon { transition: transform .2s; color: var(--blue); }
+.btn-accordion.open .accordion-icon { transform: rotate(180deg); }
+.accordion-body { padding-top: 12px; border-top: 1px solid var(--border); }

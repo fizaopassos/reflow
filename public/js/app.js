@@ -62,7 +62,8 @@ const Navbar = {
     nav.querySelectorAll('[data-page]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.page === Router.current);
     });
-    document.getElementById('nav-admin').style.display = Auth.canAdmin() ? 'flex' : 'none';
+    document.getElementById('nav-admin').style.display    = Auth.canAdmin()  ? 'flex' : 'none';
+    document.getElementById('nav-relatorio').style.display = Auth.canManage() ? 'flex' : 'none';
   }
 };
 
@@ -141,10 +142,12 @@ Views.medicoes = async ({ condominio_id, nome }) => {
   const anoHoje = agora.getFullYear();
 
   try {
-    const [medidores, leituras] = await Promise.all([
+    const [medidores, leituras, alertasData] = await Promise.all([
       API.get('/medidores?condominio_id=' + condominio_id),
       API.leituras.listar({ condominio_id, mes: mesHoje, ano: anoHoje }),
+      API.get('/relatorios/alertas?condominio_id=' + condominio_id).catch(() => ({ alertas: [] })),
     ]);
+    const alertasMedidores = new Set((alertasData.alertas || []).map(a => a.medidor_id));
 
     if (!medidores.length) {
       el.innerHTML = '<p class="empty-msg">Nenhum medidor cadastrado neste condomínio.</p>';
@@ -167,9 +170,11 @@ Views.medicoes = async ({ condominio_id, nome }) => {
     el.innerHTML = medidores.map(m => {
       const { leituraHoje, ultimaLeitura } = mapaLeituras[m.id] || {};
       const tipoIcon = { AGUA: '💧', ENERGIA: '⚡', GAS: '🔥' }[m.tipo] || '📊';
+      const temAlerta = alertasMedidores.has(m.id);
       const badge = leituraHoje
         ? '<span class="badge badge-ok">Hoje ✓</span>'
         : '<span class="badge badge-pend">Pendente hoje</span>';
+      const alertaBadge = temAlerta ? ' <span class="badge badge-alerta">⚠ Variação</span>' : '';
       const ultimaInfo = ultimaLeitura
         ? '<span>Última: <strong>' + parseFloat(ultimaLeitura.valor).toFixed(3) + ' m³</strong> — ' + new Date(ultimaLeitura.criado_em).toLocaleDateString('pt-BR') + '</span>'
         : '<span style="color:var(--text3)">Sem leituras no mês</span>';
@@ -179,7 +184,7 @@ Views.medicoes = async ({ condominio_id, nome }) => {
         '<div class="card-header"><div>' +
         '<div class="card-title">' + tipoIcon + ' ' + titulo + '</div>' +
         (empresa ? '<div style="font-size:12px;color:var(--text3)">' + empresa + '</div>' : '') +
-        '</div>' + badge + '</div>' +
+        '</div>' + badge + alertaBadge + '</div>' +
         '<div class="card-meta"><span>Série: ' + (m.numero_serie || '—') + '</span>' + ultimaInfo + '</div>' +
         '</div>';
     }).join('');
@@ -221,6 +226,17 @@ Views.leitura = async ({ medidor_id, unidade, empresa, condominio_id, condominio
   document.getElementById('leitura-dia').value = agora.getDate();
   document.getElementById('leitura-mes').value = agora.getMonth() + 1;
   document.getElementById('leitura-ano').value = agora.getFullYear();
+
+  // Campos de data retroativa — só admin vê
+  const campoData = document.getElementById('campo-data-retroativa');
+  if (campoData) {
+    campoData.style.display = Auth.canAdmin() ? 'block' : 'none';
+    if (Auth.canAdmin()) {
+      document.getElementById('leitura-dia-input').value = agora.getDate();
+      document.getElementById('leitura-mes-input').value = agora.getMonth() + 1;
+      document.getElementById('leitura-ano-input').value = agora.getFullYear();
+    }
+  }
 
   // Reset visual
   document.getElementById('leitura-preview').style.display   = 'none';
@@ -322,12 +338,22 @@ document.getElementById('form-leitura')?.addEventListener('submit', async e => {
     } else {
       if (!file) { toast('Foto obrigatória. Fotografe o medidor.', 'warn'); btn.disabled = false; return; }
       const obs = document.getElementById('leitura-obs-input')?.value;
+
+      // Admin pode usar data retroativa
+      let diaFinal = dia, mesFinal = mes, anoFinal = ano;
+      if (Auth.canAdmin()) {
+        const diaR = document.getElementById('leitura-dia-input')?.value;
+        const mesR = document.getElementById('leitura-mes-input')?.value;
+        const anoR = document.getElementById('leitura-ano-input')?.value;
+        if (diaR && mesR && anoR) { diaFinal = diaR; mesFinal = mesR; anoFinal = anoR; }
+      }
+
       const form = new FormData();
       form.append('medidor_id', medidor_id);
       form.append('valor', valor);
-      form.append('referencia_dia', dia);
-      form.append('referencia_mes', mes);
-      form.append('referencia_ano', ano);
+      form.append('referencia_dia', diaFinal);
+      form.append('referencia_mes', mesFinal);
+      form.append('referencia_ano', anoFinal);
       form.append('metodo', 'MANUAL');
       form.append('observacoes', obs || '');
       form.append('imagem', file);
@@ -674,6 +700,223 @@ document.getElementById('medidor-condo-id')?.addEventListener('change', async fu
   } catch { sel.innerHTML = '<option value="">Erro ao carregar</option>'; }
 });
 
+// ── RELATÓRIOS ───────────────────────────────────────
+Views.relatorio = async () => {
+  if (!Auth.canManage()) { Router.go('dashboard'); return; }
+  const sel = document.getElementById('rel-condo');
+  try {
+    const condos = await API.condominios.listar();
+    sel.innerHTML = condos.map(c => '<option value="' + c.id + '">' + c.nome + '</option>').join('');
+    // Carrega unidades quando muda o condomínio
+    sel.onchange = async () => {
+      const selU = document.getElementById('rel-unidade');
+      selU.innerHTML = '<option value="">Todas as unidades</option>';
+      if (!sel.value) return;
+      try {
+        const unidades = await API.get('/unidades?condominio_id=' + sel.value);
+        selU.innerHTML += unidades.map(u =>
+          '<option value="' + u.id + '">' + (u.bloco ? u.bloco + ' · ' : '') + u.identificador + (u.empresa ? ' — ' + u.empresa : '') + '</option>'
+        ).join('');
+      } catch {}
+    };
+    // Trigger para o primeiro condomínio
+    if (condos.length) sel.onchange();
+  } catch {}
+
+  // Define mês/ano atual como padrão
+  const agora = new Date();
+  document.getElementById('rel-mes').value = agora.getMonth() + 1;
+  document.getElementById('rel-ano').value = agora.getFullYear();
+
+  // Define datas padrão para período (últimos 30 dias)
+  const fim = agora.toISOString().split('T')[0];
+  const ini = new Date(agora - 30 * 86400000).toISOString().split('T')[0];
+  document.getElementById('rel-inicio').value = ini;
+  document.getElementById('rel-fim').value    = fim;
+
+  document.getElementById('rel-resultado').innerHTML = '';
+};
+
+function alternarFiltrosRelatorio() {
+  const tipo = document.getElementById('rel-tipo').value;
+  document.getElementById('rel-filtros-mensal').style.display  = tipo === 'mensal'  ? 'flex' : 'none';
+  document.getElementById('rel-filtros-periodo').style.display = tipo === 'periodo' ? 'flex' : 'none';
+  document.getElementById('rel-filtros-extrato').style.display = tipo === 'extrato' ? 'block' : 'none';
+}
+
+async function gerarRelatorio(formato) {
+  const condoId = document.getElementById('rel-condo').value;
+  const tipo    = document.getElementById('rel-tipo').value;
+  if (!condoId) { toast('Selecione um condomínio.', 'warn'); return; }
+
+  let url;
+  if (tipo === 'mensal') {
+    const mes = document.getElementById('rel-mes').value;
+    const ano = document.getElementById('rel-ano').value;
+    url = '/api/relatorios/mensal?condominio_id=' + condoId + '&mes=' + mes + '&ano=' + ano + '&formato=' + formato;
+  } else if (tipo === 'extrato') {
+    const mes = document.getElementById('rel-mes').value;
+    const ano = document.getElementById('rel-ano').value;
+    const unidadeId = document.getElementById('rel-unidade').value;
+    url = '/api/relatorios/extrato?condominio_id=' + condoId + '&mes=' + mes + '&ano=' + ano + '&formato=' + formato;
+    if (unidadeId) url += '&unidade_id=' + unidadeId;
+  } else {
+    const ini = document.getElementById('rel-inicio').value;
+    const fim = document.getElementById('rel-fim').value;
+    if (!ini || !fim) { toast('Preencha as datas.', 'warn'); return; }
+    url = '/api/relatorios/periodo?condominio_id=' + condoId + '&data_inicio=' + ini + '&data_fim=' + fim + '&formato=' + formato;
+  }
+
+  if (formato === 'csv' || formato === 'pdf') {
+    // Download direto
+    const a = document.createElement('a');
+    a.href = url;
+    a.setAttribute('Authorization', 'Bearer ' + Auth.token);
+    // Usa fetch para manter o token
+    try {
+      const resp = await fetch(url, { headers: { Authorization: 'Bearer ' + Auth.token } });
+      if (!resp.ok) { toast('Erro ao gerar arquivo.', 'erro'); return; }
+      const blob = await resp.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objUrl;
+      link.download = formato === 'csv' ? 'relatorio.csv' : 'relatorio.pdf';
+      link.click();
+      URL.revokeObjectURL(objUrl);
+    } catch { toast('Erro ao baixar arquivo.', 'erro'); }
+    return;
+  }
+
+  // JSON — renderiza na tela
+  const el = document.getElementById('rel-resultado');
+  el.innerHTML = '<p class="loading-msg">Gerando relatório...</p>';
+
+  try {
+    const resp = await fetch(url, { headers: { Authorization: 'Bearer ' + Auth.token } });
+    const data = await resp.json();
+    if (!resp.ok) { el.innerHTML = '<p class="error-msg">' + (data.erro || 'Erro') + '</p>'; return; }
+
+    if (tipo === 'mensal') renderRelatorioMensal(el, data);
+    else if (tipo === 'extrato') renderRelatorioExtrato(el, data);
+    else renderRelatorioPeriodo(el, data);
+  } catch (err) {
+    el.innerHTML = '<p class="error-msg">' + err.message + '</p>';
+  }
+}
+
+function renderRelatorioMensal(el, data) {
+  const nomeMes = new Date(data.ano, data.mes - 1).toLocaleString('pt-BR', { month: 'long' });
+  let html = '<div class="rel-header"><h3>' + nomeMes + ' ' + data.ano + ' — ' + data.condominio + '</h3></div>';
+
+  // Resumo cards
+  html += '<div class="rel-resumo">' +
+    relCard('Total consumido', data.resumo.consumo_total_m3.toFixed(3) + ' m³') +
+    relCard('Medidores lidos', data.resumo.total_medidores_lidos) +
+    relCard('Média por unidade', data.resumo.media_consumo_m3.toFixed(3) + ' m³') +
+    relCard('Alertas', data.resumo.total_alertas, data.resumo.total_alertas > 0 ? 'warn' : '') +
+    '</div>';
+
+  // Tabela
+  html += '<div class="rel-table-wrap"><table class="rel-table">' +
+    '<thead><tr><th>Unidade</th><th>Empresa</th><th>Dias</th><th>1ª Leitura</th><th>Última</th><th>Consumo m³</th><th>Var%</th></tr></thead><tbody>';
+
+  data.leituras.forEach(l => {
+    const alerta = l.alerta ? ' rel-alerta' : '';
+    const varStr = l.variacao_pct !== null ? (l.variacao_pct >= 0 ? '+' : '') + l.variacao_pct + '%' : '—';
+    html += '<tr class="' + alerta + '">' +
+      '<td><strong>' + (l.bloco ? l.bloco + ' · ' : '') + l.unidade + '</strong></td>' +
+      '<td>' + (l.empresa || '—') + '</td>' +
+      '<td>' + l.dias_lidos + '</td>' +
+      '<td>' + parseFloat(l.primeira_leitura).toFixed(3) + '</td>' +
+      '<td>' + parseFloat(l.ultima_leitura).toFixed(3) + '</td>' +
+      '<td><strong>' + parseFloat(l.consumo_m3).toFixed(3) + '</strong></td>' +
+      '<td class="' + (l.alerta ? 'text-danger' : '') + '">' + varStr + '</td>' +
+      '</tr>';
+  });
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
+
+function renderRelatorioPeriodo(el, data) {
+  let html = '<div class="rel-header"><h3>Leituras — ' + data.condominio + '</h3>' +
+    '<p>' + new Date(data.data_inicio).toLocaleDateString('pt-BR') + ' a ' + new Date(data.data_fim).toLocaleDateString('pt-BR') + '</p></div>';
+
+  html += '<div class="rel-resumo">' +
+    relCard('Total de leituras', data.total_leituras) +
+    relCard('Alertas', data.total_alertas, data.total_alertas > 0 ? 'warn' : '') +
+    '</div>';
+
+  html += '<div class="rel-table-wrap"><table class="rel-table">' +
+    '<thead><tr><th>Unidade</th><th>Empresa</th><th>Data</th><th>Valor m³</th><th>Variação</th><th>Leitor</th></tr></thead><tbody>';
+
+  data.leituras.forEach(l => {
+    const alerta = l.alerta ? ' rel-alerta' : '';
+    const dataStr = String(l.referencia_dia).padStart(2,'0') + '/' + String(l.referencia_mes).padStart(2,'0') + '/' + l.referencia_ano;
+    const varStr  = l.variacao !== null ? (l.variacao >= 0 ? '+' : '') + parseFloat(l.variacao).toFixed(3) : '—';
+    html += '<tr class="' + alerta + '">' +
+      '<td><strong>' + (l.bloco ? l.bloco + ' · ' : '') + l.unidade + '</strong></td>' +
+      '<td>' + (l.empresa_snapshot || '—') + '</td>' +
+      '<td>' + dataStr + '</td>' +
+      '<td>' + parseFloat(l.valor).toFixed(3) + '</td>' +
+      '<td class="' + (l.alerta ? 'text-danger' : '') + '">' + varStr + '</td>' +
+      '<td>' + l.leitor + '</td>' +
+      '</tr>';
+  });
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
+
+function renderRelatorioExtrato(el, data) {
+  const nomeMes = new Date(data.ano, data.mes - 1).toLocaleString('pt-BR', { month: 'long' });
+  let html = '<div class="rel-header"><h3>Extrato — ' + data.condominio + '</h3><p>' + nomeMes + ' ' + data.ano + '</p></div>';
+
+  data.extratos.forEach(e => {
+    const titulo = (e.bloco ? e.bloco + ' · ' : '') + e.unidade;
+    html += '<div class="rel-extrato-bloco">' +
+      '<div class="rel-extrato-header">' +
+      '<div><strong>' + titulo + '</strong>' + (e.empresa ? ' <span style="color:var(--text2);font-weight:400">— ' + e.empresa + '</span>' : '') + '</div>' +
+      '<div style="font-size:12px;color:var(--text2)">Série: ' + (e.numero_serie || '—') + '</div>' +
+      '</div>';
+
+    html += '<div class="rel-table-wrap"><table class="rel-table">' +
+      '<thead><tr><th>Data</th><th>Dia</th><th>Valor m³</th><th>Consumo dia</th><th>Leitor</th><th>Foto</th></tr></thead><tbody>';
+
+    e.linhas.forEach(l => {
+      if (l.sem_leitura) {
+        html += '<tr style="opacity:.4"><td>' + l.data + '</td><td>' + l.dia_semana + '</td><td colspan="4" style="color:var(--text3);font-style:italic">Sem leitura</td></tr>';
+      } else {
+        const consumoStr = l.consumo !== null ? (l.consumo >= 0 ? '+' : '') + l.consumo.toFixed(3) : '—';
+        const consumoCor = l.consumo > 0 ? 'style="color:var(--ok);font-weight:600"' : '';
+        html += '<tr>' +
+          '<td>' + l.data + '</td>' +
+          '<td>' + l.dia_semana + '</td>' +
+          '<td><strong>' + l.valor.toFixed(3) + '</strong></td>' +
+          '<td ' + consumoCor + '>' + consumoStr + '</td>' +
+          '<td>' + (l.leitor || '—') + '</td>' +
+          '<td>' + (l.tem_foto ? '<a href="' + l.foto_url + '" target="_blank" style="color:var(--blue)">📷 ver</a>' : '—') + '</td>' +
+          '</tr>';
+      }
+    });
+
+    html += '</tbody><tfoot><tr style="background:var(--blue)">' +
+      '<td colspan="3" style="color:white;font-weight:700;padding:8px 10px">CONSUMO TOTAL</td>' +
+      '<td style="color:white;font-weight:700;font-family:var(--mono)">' + e.consumo_total.toFixed(3) + ' m³</td>' +
+      '<td colspan="2" style="color:rgba(255,255,255,.6);font-size:11px">' + e.dias_lidos + ' dias lidos</td>' +
+      '</tr></tfoot></table></div></div>';
+  });
+
+  el.innerHTML = html || '<p class="empty-msg">Nenhuma leitura no período.</p>';
+}
+
+function relCard(label, valor, tipo) {
+  const bg = tipo === 'warn' ? 'var(--warn-bg)' : 'var(--blue-xlight)';
+  const color = tipo === 'warn' ? 'var(--warn)' : 'var(--blue)';
+  return '<div class="rel-card" style="background:' + bg + '">' +
+    '<div class="rel-card-val" style="color:' + color + '">' + valor + '</div>' +
+    '<div class="rel-card-label">' + label + '</div>' +
+    '</div>';
+}
+
 // ── ACCORDION ────────────────────────────────────────
 function toggleAccordion(bodyId) {
   const body = document.getElementById(bodyId);
@@ -789,6 +1032,8 @@ window.fecharModal         = fecharModal;
 window.voltarDeLeitura     = voltarDeLeitura;
 window.carregarUnidadesAdmin  = carregarUnidadesAdmin;
 window.toggleAccordion        = toggleAccordion;
+window.alternarFiltrosRelatorio = alternarFiltrosRelatorio;
+window.gerarRelatorio           = gerarRelatorio;
 window.fecharModalEdit        = fecharModalEdit;
 window.editarCondominio       = editarCondominio;
 window.editarUnidade          = editarUnidade;

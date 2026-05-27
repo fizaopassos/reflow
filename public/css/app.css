@@ -799,3 +799,45 @@ input::placeholder { color: var(--text3); }
 .btn-accordion .accordion-icon { transition: transform .2s; color: var(--blue); }
 .btn-accordion.open .accordion-icon { transform: rotate(180deg); }
 .accordion-body { padding-top: 12px; border-top: 1px solid var(--border); }
+
+/* ── RELATÓRIOS ──────────────────────────────────────── */
+.rel-header { padding: 0 0 12px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.rel-header h3 { font-size: 16px; font-weight: 700; color: var(--text); }
+.rel-header p  { font-size: 13px; color: var(--text2); margin-top: 2px; }
+
+.rel-resumo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+.rel-card   { background: var(--blue-xlight); border-radius: var(--radius); padding: 12px; }
+.rel-card-val   { font-size: 22px; font-weight: 700; color: var(--blue); font-family: var(--mono); }
+.rel-card-label { font-size: 11px; color: var(--text2); margin-top: 2px; text-transform: uppercase; letter-spacing: .5px; }
+
+.rel-table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1.5px solid var(--border); }
+.rel-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.rel-table thead tr { background: var(--blue); }
+.rel-table thead th { color: white; font-weight: 600; padding: 8px 10px; text-align: left; white-space: nowrap; }
+.rel-table tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+.rel-table tbody tr:hover { background: var(--blue-xlight); }
+.rel-table tbody tr:last-child { border-bottom: none; }
+.rel-table tbody td { padding: 8px 10px; color: var(--text); vertical-align: middle; }
+.rel-alerta { border-left: 3px solid var(--danger) !important; }
+.text-danger { color: var(--danger) !important; font-weight: 600; }
+
+/* Badge alerta na tela de medições */
+.badge-alerta { background: rgba(248,113,113,.1); color: var(--danger); border: 1px solid rgba(248,113,113,.3); }
+
+/* ── EXTRATO ─────────────────────────────────────────── */
+.rel-extrato-bloco {
+  margin-bottom: 20px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.rel-extrato-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--blue-xlight);
+  border-bottom: 1.5px solid var(--border);
+  font-size: 14px;
+  color: var(--text);
+}

@@ -126,6 +126,26 @@
         <label for="leitura-obs-input">Observações (opcional)</label>
         <input type="text" id="leitura-obs-input" placeholder="ex: medidor com sujeira, difícil leitura">
       </div>
+      <!-- Data retroativa — visível só para admin -->
+      <div id="campo-data-retroativa" style="display:none">
+        <div style="font-size:11px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;padding:8px 0 0;border-top:1px solid var(--border)">
+          Data da leitura (admin)
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label>Dia</label>
+            <input type="number" id="leitura-dia-input" min="1" max="31" placeholder="dd">
+          </div>
+          <div class="field">
+            <label>Mês</label>
+            <input type="number" id="leitura-mes-input" min="1" max="12" placeholder="mm">
+          </div>
+          <div class="field">
+            <label>Ano</label>
+            <input type="number" id="leitura-ano-input" min="2024" max="2030" placeholder="aaaa">
+          </div>
+        </div>
+      </div>
       <button type="submit" id="form-leitura-submit" class="btn-primary">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8l4 4 8-8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         Salvar leitura
@@ -281,11 +301,101 @@
     </div>
   </div>
 
+  <!-- ── RELATÓRIOS ───────────────────────────────────── -->
+  <div class="view" id="view-relatorio">
+    <div class="topbar">
+      <div class="topbar-inner">
+        <img src="/logo.png" alt="Retha" class="logo">
+      </div>
+      <div class="topbar-title">Relatórios</div>
+    </div>
+
+    <!-- Filtros -->
+    <div style="padding:16px">
+      <div class="form-card">
+        <div class="form-row">
+          <div class="field">
+            <label>Condomínio</label>
+            <select id="rel-condo"></select>
+          </div>
+          <div class="field">
+            <label>Tipo</label>
+            <select id="rel-tipo" onchange="alternarFiltrosRelatorio()">
+              <option value="mensal">Acumulado mensal</option>
+              <option value="periodo">Leituras por período</option>
+              <option value="extrato">Extrato por unidade</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Filtros mensal -->
+        <div id="rel-filtros-mensal" class="form-row">
+          <div class="field">
+            <label>Mês</label>
+            <select id="rel-mes">
+              <option value="1">Janeiro</option><option value="2">Fevereiro</option>
+              <option value="3">Março</option><option value="4">Abril</option>
+              <option value="5">Maio</option><option value="6">Junho</option>
+              <option value="7">Julho</option><option value="8">Agosto</option>
+              <option value="9">Setembro</option><option value="10">Outubro</option>
+              <option value="11">Novembro</option><option value="12">Dezembro</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Ano</label>
+            <input type="number" id="rel-ano" value="2026" min="2024" max="2030">
+          </div>
+        </div>
+
+        <!-- Filtro unidade (extrato) -->
+        <div id="rel-filtros-extrato" style="display:none">
+          <div class="field">
+            <label>Unidade (deixe vazio para todas)</label>
+            <select id="rel-unidade">
+              <option value="">Todas as unidades</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Filtros período -->
+        <div id="rel-filtros-periodo" class="form-row" style="display:none">
+          <div class="field">
+            <label>Data início</label>
+            <input type="date" id="rel-inicio">
+          </div>
+          <div class="field">
+            <label>Data fim</label>
+            <input type="date" id="rel-fim">
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn-primary btn-sm" style="flex:1" onclick="gerarRelatorio('json')">
+            Ver relatório
+          </button>
+          <button class="btn-secondary btn-sm" onclick="gerarRelatorio('csv')">
+            ⬇ CSV
+          </button>
+          <button class="btn-secondary btn-sm" onclick="gerarRelatorio('pdf')">
+            ⬇ PDF
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Resultado -->
+    <div id="rel-resultado" style="padding:0 16px 16px"></div>
+  </div>
+
   <!-- ── NAVBAR ──────────────────────────────────────── -->
   <nav id="navbar" style="display:none">
     <button data-page="dashboard">
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg>
       Dashboard
+    </button>
+    <button data-page="relatorio" id="nav-relatorio">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 14l4-4 3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="2" y="2" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
+      Relatórios
     </button>
     <button id="nav-admin" data-page="admin" style="display:none">
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="6" r="3.5" stroke="currentColor" stroke-width="1.5"/><path d="M3 17c0-3.5 3.1-6 7-6s7 2.5 7 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>

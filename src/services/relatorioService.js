@@ -4,8 +4,21 @@ const PDFDocument = require('pdfkit');
 function fmtData(d) {
   return new Date(d).toLocaleDateString('pt-BR');
 }
-function fmtValor(v) {
-  return parseFloat(v).toFixed(3).replace('.', ',');
+function fmtValor(v, casas) {
+  const c = casas !== undefined ? casas : 3;
+  return parseFloat(v).toLocaleString('pt-BR', {
+    minimumFractionDigits: c,
+    maximumFractionDigits: c,
+  });
+}
+function fmtVar(v, casas) {
+  if (v === null || v === undefined) return '—';
+  const c = casas !== undefined ? casas : 3;
+  const num = parseFloat(v);
+  return (num >= 0 ? '+' : '') + Math.abs(num).toLocaleString('pt-BR', {
+    minimumFractionDigits: c,
+    maximumFractionDigits: c,
+  });
 }
 function fmtPct(v) {
   return (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
@@ -43,35 +56,76 @@ function gerarCSVMensal(linhas, mes, ano) {
 }
 
 // ── GERAR PDF ─────────────────────────────────────────
-function gerarPDFPeriodo(leituras, { condominio, dataInicio, dataFim }, res) {
+function gerarPDFPeriodo(leituras, { condominio, dataInicio, dataFim }, res, acumulado, resumo) {
   const doc = new PDFDocument({ margin: 40, size: 'A4' });
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="leituras-periodo.pdf"`);
   doc.pipe(res);
 
-  // Header
   _cabecalho(doc, 'Relatório de Leituras — Período', condominio, `${fmtData(dataInicio)} a ${fmtData(dataFim)}`);
 
-  // Tabela
-  const cols = [140, 80, 100, 70, 70, 80];
-  const headers = ['Unidade / Empresa', 'Data', 'Valor m³', 'Variação', 'Leitor', 'Método'];
+  // Resumo box
+  if (resumo) {
+    doc.roundedRect(40, doc.y, 515, 50, 4).fillAndStroke('#f0f4ff', '#c4cde8');
+    const ry = doc.y - 46;
+    doc.fillColor('#254086').fontSize(9).font('Helvetica-Bold');
+    doc.text('TOTAL DE LEITURAS', 55, ry + 8);
+    doc.text('CONSUMO NO PERÍODO', 200, ry + 8);
+    doc.text('ALERTAS', 395, ry + 8);
+    doc.fillColor('#1a2036').fontSize(14).font('Helvetica-Bold');
+    doc.text(String(resumo.total_leituras || 0), 55, ry + 22);
+    doc.text(fmtValor(resumo.consumo_total_m3 || 0, 3), 200, ry + 22);
+    doc.fillColor(resumo.total_alertas > 0 ? '#dc2626' : '#1a2036').fontSize(14);
+    doc.text(String(resumo.total_alertas || 0), 395, ry + 22);
+    doc.moveDown(2.5);
+    doc.fillColor('#1a2036');
+  }
+
+  // Tabela acumulado por unidade
+  if (acumulado && acumulado.length) {
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('#254086').text('Acumulado por unidade', 40);
+    doc.moveDown(0.3);
+    const colsAcum = [200, 200, 115];
+    _tabelaHeader(doc, colsAcum, ['Unidade', 'Empresa', 'Consumo no período']);
+    acumulado.forEach((a, i) => {
+      const casas = a.casas_decimais ?? 3;
+      _tabelaLinha(doc, colsAcum, [
+        (a.bloco ? a.bloco + ' · ' : '') + a.unidade,
+        a.empresa || '—',
+        fmtValor(a.consumo, casas),
+      ], i % 2 === 0, null);
+    });
+    doc.moveDown(1);
+  }
+
+  // Tabela leituras diárias
+  doc.fontSize(10).font('Helvetica-Bold').fillColor('#254086').text('Leituras detalhadas');
+  doc.moveDown(0.3);
+  const cols = [120, 75, 85, 70, 75, 45, 45];
+  const headers = ['Unidade / Empresa', 'Data', 'Valor', 'Variação', 'Leitor', 'Mét.', 'Foto'];
   _tabelaHeader(doc, cols, headers);
 
-  leituras.forEach((l, i) => {
-    const unidadeStr = (l.bloco ? l.bloco + ' · ' : '') + l.unidade;
-    const empresaStr = l.empresa_snapshot || '—';
-    const dataStr = `${String(l.referencia_dia).padStart(2,'0')}/${String(l.referencia_mes).padStart(2,'0')}`;
-    const varStr = l.variacao !== null ? fmtValor(l.variacao) : '—';
-    const alertaCor = l.alerta ? '#dc2626' : null;
+  const fs   = require('fs');
+  const path = require('path');
 
-    _tabelaLinha(doc, cols, [
-      unidadeStr + '\n' + empresaStr,
+  leituras.forEach((l, i) => {
+    const casas      = l.casas_decimais ?? 3;
+    const unidadeStr = (l.bloco ? l.bloco + ' · ' : '') + l.unidade;
+    const dataStr    = `${String(l.referencia_dia).padStart(2,'0')}/${String(l.referencia_mes).padStart(2,'0')}`;
+    const varNum     = l.variacao !== null ? parseFloat(l.variacao) : null;
+    const varStr     = varNum !== null ? fmtVar(varNum, casas) : '—';
+    const alertaCor  = l.alerta ? '#dc2626' : null;
+    const varCor     = l.alerta ? '#dc2626' : (varNum !== null && varNum > 0 ? '#0d9e6e' : null);
+
+    _tabelaLinhaComFoto(doc, cols, [
+      unidadeStr + '\n' + (l.empresa_snapshot || '—'),
       dataStr,
-      fmtValor(l.valor),
+      fmtValor(l.valor, casas),
       varStr,
       l.leitor,
       l.metodo,
-    ], i % 2 === 0, alertaCor);
+      l.foto_url,
+    ], i % 2 === 0, alertaCor, varCor, 3);
   });
 
   _rodape(doc);
@@ -137,13 +191,54 @@ function gerarPDFMensal(linhas, resumo, { condominio, mes, ano }, res) {
 }
 
 // ── HELPERS PDF ───────────────────────────────────────
+function _tabelaLinhaComFoto(doc, cols, values, zebra, alertaCor, varCor, varIdx) {
+  const path = require('path');
+  const fs   = require('fs');
+  const x0 = 40;
+  const y  = doc.y;
+  const h  = values[0].includes('\n') ? 26 : 16;
+  const bg = zebra ? '#f0f4ff' : 'white';
+  doc.rect(x0, y, cols.reduce((a,b)=>a+b,0), h).fill(bg);
+  if (alertaCor) doc.rect(x0, y, 3, h).fill(alertaCor);
+
+  let x = x0;
+  values.forEach((v, i) => {
+    if (i === cols.length - 1 && v && v.startsWith('/uploads/')) {
+      // Miniatura de foto
+      try {
+        const fpath = path.join(__dirname, '../../', v);
+        if (fs.existsSync(fpath)) {
+          doc.image(fpath, x + 3, y + 2, { width: cols[i] - 8, height: h - 4, fit: [cols[i]-8, h-4] });
+        } else {
+          doc.fillColor('#9aa3bf').fontSize(7).font('Helvetica').text('📷', x + 3, y + 4, { width: cols[i] - 6 });
+        }
+      } catch {
+        doc.fillColor('#9aa3bf').fontSize(7).font('Helvetica').text('📷', x + 3, y + 4, { width: cols[i] - 6 });
+      }
+    } else {
+      const isBold   = i === 0;
+      const color    = i === varIdx && varCor ? varCor : '#1a2036';
+      doc.fillColor(color).fontSize(7.5)
+         .font(isBold ? 'Helvetica-Bold' : 'Helvetica')
+         .text(String(v || '—'), x + 3, y + (h > 16 ? 3 : 4), { width: cols[i] - 6, lineGap: 1 });
+    }
+    x += cols[i];
+  });
+  doc.y = y + h + 2;
+  if (doc.y > 760) doc.addPage();
+}
+
 function _cabecalho(doc, titulo, condominio, periodo) {
-  doc.rect(0, 0, 595, 70).fill('#254086');
-  doc.fillColor('white').fontSize(16).font('Helvetica-Bold').text('reflow', 40, 18);
-  doc.fontSize(9).font('Helvetica').text('Sistema de leitura de medidores', 40, 38);
-  doc.fontSize(13).font('Helvetica-Bold').text(titulo, 200, 18, { align: 'right', width: 355 });
-  doc.fontSize(9).font('Helvetica').fillColor('#c4cde8').text(condominio + '  |  ' + periodo, 200, 38, { align: 'right', width: 355 });
-  doc.moveDown(3);
+  doc.rect(0, 0, 595, 75).fill('#254086');
+  // Logo / nome
+  doc.fillColor('white').fontSize(15).font('Helvetica-Bold').text('reflow', 40, 16);
+  doc.fontSize(8).font('Helvetica').fillColor('rgba(255,255,255,0.7)').text('Sistema de leitura de medidores', 40, 34);
+  // Título e info — lado direito, com fonte menor para caber
+  doc.fontSize(11).font('Helvetica-Bold').fillColor('white').text(titulo, 200, 14, { align: 'right', width: 355 });
+  // Condomínio e período em duas linhas se necessário
+  const infoStr = condominio + '  |  ' + periodo;
+  doc.fontSize(8).font('Helvetica').fillColor('#c4cde8').text(infoStr, 200, 30, { align: 'right', width: 355, lineBreak: true });
+  doc.moveDown(3.5);
   doc.fillColor('#1a2036');
 }
 
@@ -250,11 +345,11 @@ function gerarPDFExtrato(extratos, { condominio, mes, ano }, res) {
 
     e.linhas.forEach((l, i) => {
       if (l.sem_leitura) {
-        _tabelaLinhaExtrato(doc, cols, [l.data, l.dia_semana, 'Sem leitura', '—', '—', '—', ''], i % 2 === 0, '#f8f8f8', true);
+        _tabelaLinhaExtrato(doc, cols, [l.dia_semana + ' ' + l.data, 'Sem leitura', '—', '—', '—', ''], i % 2 === 0, '#f8f8f8', true);
       } else {
         const consumoStr = l.consumo !== null ? (l.consumo >= 0 ? '+' : '') + fmtValor(l.consumo) : '—';
         _tabelaLinhaExtrato(doc, cols, [
-          l.data, l.dia_semana,
+          l.dia_semana + ' ' + l.data,
           fmtValor(l.valor),
           consumoStr,
           l.leitor || '—',

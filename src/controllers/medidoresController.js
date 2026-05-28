@@ -64,21 +64,35 @@ async function listarMedidores(req, res) {
 }
 
 async function criarMedidor(req, res) {
-  const { unidade_id, tipo, numero_serie, localizacao } = req.body;
+  const { unidade_id, tipo, numero_serie, localizacao, casas_decimais } = req.body;
   if (!unidade_id) return res.status(400).json({ erro: 'unidade_id é obrigatório.' });
   const medidor = await prisma.medidor.create({
-    data: { unidade_id, tipo: tipo || 'AGUA', numero_serie, localizacao },
+    data: {
+      unidade_id, tipo: tipo || 'AGUA', numero_serie, localizacao,
+      casas_decimais: casas_decimais !== undefined ? parseInt(casas_decimais) : 3,
+    },
   });
   res.status(201).json(medidor);
 }
 
 async function atualizarMedidor(req, res) {
-  const { tipo, numero_serie, localizacao, ativo } = req.body;
+  const { tipo, numero_serie, localizacao, casas_decimais, ativo } = req.body;
+  const data = { tipo, numero_serie, localizacao, ativo };
+  if (casas_decimais !== undefined) data.casas_decimais = parseInt(casas_decimais);
   const medidor = await prisma.medidor.update({
     where: { id: req.params.id },
-    data: { tipo, numero_serie, localizacao, ativo },
+    data,
   });
   res.json(medidor);
 }
 
-module.exports = { listarUnidades, criarUnidade, atualizarUnidade, listarMedidores, criarMedidor, atualizarMedidor };
+async function buscarMedidor(req, res) {
+  const medidor = await prisma.medidor.findUnique({
+    where: { id: req.params.id },
+    select: { id: true, tipo: true, numero_serie: true, casas_decimais: true, localizacao: true },
+  });
+  if (!medidor) return res.status(404).json({ erro: 'Medidor não encontrado.' });
+  res.json(medidor);
+}
+
+module.exports = { listarUnidades, criarUnidade, atualizarUnidade, listarMedidores, buscarMedidor, criarMedidor, atualizarMedidor };

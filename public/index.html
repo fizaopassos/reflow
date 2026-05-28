@@ -119,8 +119,9 @@
     <!-- Formulário de leitura — aparece após tirar foto -->
     <form id="form-leitura" class="form-leitura" style="display:none">
       <div class="field">
-        <label for="leitura-valor-input">Valor da leitura (m³) <span style="color:var(--danger)">*</span></label>
-        <input type="number" id="leitura-valor-input" step="0.001" placeholder="ex: 12345.678" required>
+        <label for="leitura-valor-input">Leitura do medidor <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="leitura-valor-input" inputmode="decimal" placeholder="ex: 4952634 ou 4.952,634" required>
+        <small id="leitura-valor-hint" style="color:var(--text3);font-size:11px;margin-top:2px"></small>
       </div>
       <div class="field">
         <label for="leitura-obs-input">Observações (opcional)</label>
@@ -261,7 +262,18 @@
               </div>
               <div class="field"><label>Nº de série</label><input type="text" id="medidor-serie" placeholder="opcional"></div>
             </div>
-            <div class="field"><label>Localização</label><input type="text" id="medidor-local" placeholder="ex: Corredor térreo"></div>
+            <div class="form-row">
+              <div class="field">
+                <label>Casas decimais</label>
+                <select id="medidor-casas">
+                  <option value="0">0 — Inteiro (ex: 51403)</option>
+                  <option value="1">1 — ex: 5140,3</option>
+                  <option value="2">2 — ex: 5.120,40</option>
+                  <option value="3" selected>3 — ex: 4.952,634</option>
+                </select>
+              </div>
+              <div class="field"><label>Localização</label><input type="text" id="medidor-local" placeholder="ex: Corredor térreo"></div>
+            </div>
             <button type="submit" class="btn-primary btn-sm" style="width:auto;margin-top:4px">Salvar</button>
           </form>
         </div>
@@ -358,14 +370,22 @@
         </div>
 
         <!-- Filtros período -->
-        <div id="rel-filtros-periodo" class="form-row" style="display:none">
-          <div class="field">
-            <label>Data início</label>
-            <input type="date" id="rel-inicio">
-          </div>
-          <div class="field">
-            <label>Data fim</label>
-            <input type="date" id="rel-fim">
+        <div id="rel-filtros-periodo" style="display:none">
+          <div class="form-row">
+            <div class="field" style="flex:0 0 140px">
+              <label>Data início</label>
+              <input type="date" id="rel-inicio">
+            </div>
+            <div class="field" style="flex:0 0 140px">
+              <label>Data fim</label>
+              <input type="date" id="rel-fim">
+            </div>
+            <div class="field" style="flex:1">
+              <label>Unidade</label>
+              <select id="rel-unidade-periodo">
+                <option value="">Todas as unidades</option>
+              </select>
+            </div>
           </div>
         </div>
 

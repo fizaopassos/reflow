@@ -39,6 +39,7 @@ router.put ('/unidades/:id', auth, autorizar('ADMIN', 'GESTOR'), medidoresCtrl.a
 
 // ── MEDIDORES ─────────────────────────────────────────────────
 router.get ('/medidores',     auth, medidoresCtrl.listarMedidores);
+router.get ('/medidores/:id', auth, medidoresCtrl.buscarMedidor);
 router.post('/medidores',     auth, autorizar('ADMIN', 'GESTOR'), medidoresCtrl.criarMedidor);
 router.put ('/medidores/:id', auth, autorizar('ADMIN', 'GESTOR'), medidoresCtrl.atualizarMedidor);
 

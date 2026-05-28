@@ -2,6 +2,7 @@ const path   = require('path');
 const fs     = require('fs');
 const prisma = require('../utils/prisma');
 const { analisarImagem } = require('../services/geminiService');
+const { interpretarInput } = require('../utils/formatacao');
 
 // ── ANALISAR FOTO (sem salvar) ────────────────────────
 async function analisar(req, res) {
@@ -27,27 +28,68 @@ async function registrar(req, res) {
     return res.status(400).json({ erro: 'medidor_id, valor, referencia_dia, referencia_mes e referencia_ano são obrigatórios.' });
   }
 
-  // Validação de valor
-  const valorNum = parseFloat(valor);
+  // Busca casas_decimais do medidor para interpretar o input corretamente
+  const medidorCasas = await prisma.medidor.findUnique({
+    where: { id: medidor_id },
+    select: { casas_decimais: true },
+  });
+  const casasDecimais = medidorCasas?.casas_decimais ?? 3;
+
+  // Interpreta o input (aceita qualquer formato: "4952634", "4952,634", "4.952,634")
+  const valorNum = interpretarInput(valor, casasDecimais);
   if (isNaN(valorNum) || valorNum < 0) {
     return res.status(400).json({ erro: 'Valor inválido.' });
   }
-  if (valorNum >= 9999999) {
+  if (valorNum >= 99999999) {
     return res.status(400).json({ erro: 'Valor muito alto. Verifique se não digitou errado.' });
   }
 
-  // Validação: leitura não pode ser menor que a última registrada
-  const ultimaLeitura = await prisma.leitura.findFirst({
-    where: { medidor_id },
+  const { formatarValor } = require('../utils/formatacao');
+  const diaRef = parseInt(referencia_dia), mesRef = parseInt(referencia_mes), anoRef = parseInt(referencia_ano);
+
+  // Leitura imediatamente ANTERIOR na sequência de datas
+  const leituraAnterior = await prisma.leitura.findFirst({
+    where: {
+      medidor_id,
+      OR: [
+        { referencia_ano: { lt: anoRef } },
+        { referencia_ano: anoRef, referencia_mes: { lt: mesRef } },
+        { referencia_ano: anoRef, referencia_mes: mesRef, referencia_dia: { lt: diaRef } },
+      ],
+    },
     orderBy: [
       { referencia_ano: 'desc' },
       { referencia_mes: 'desc' },
       { referencia_dia: 'desc' },
     ],
   });
-  if (ultimaLeitura && valorNum < parseFloat(ultimaLeitura.valor)) {
+
+  if (leituraAnterior && valorNum < parseFloat(leituraAnterior.valor)) {
     return res.status(400).json({
-      erro: `Leitura inválida. O valor ${valorNum} é menor que a última leitura registrada (${parseFloat(ultimaLeitura.valor).toFixed(3)} m³). Medidores só crescem.`
+      erro: `Valor menor que a leitura do dia anterior (${formatarValor(leituraAnterior.valor, casasDecimais)} em ${String(leituraAnterior.referencia_dia).padStart(2,'0')}/${String(leituraAnterior.referencia_mes).padStart(2,'0')}/${leituraAnterior.referencia_ano}).`
+    });
+  }
+
+  // Leitura imediatamente POSTERIOR na sequência de datas
+  const leituraPosterior = await prisma.leitura.findFirst({
+    where: {
+      medidor_id,
+      OR: [
+        { referencia_ano: { gt: anoRef } },
+        { referencia_ano: anoRef, referencia_mes: { gt: mesRef } },
+        { referencia_ano: anoRef, referencia_mes: mesRef, referencia_dia: { gt: diaRef } },
+      ],
+    },
+    orderBy: [
+      { referencia_ano: 'asc' },
+      { referencia_mes: 'asc' },
+      { referencia_dia: 'asc' },
+    ],
+  });
+
+  if (leituraPosterior && valorNum > parseFloat(leituraPosterior.valor)) {
+    return res.status(400).json({
+      erro: `Valor maior que a leitura do dia seguinte (${formatarValor(leituraPosterior.valor, casasDecimais)} em ${String(leituraPosterior.referencia_dia).padStart(2,'0')}/${String(leituraPosterior.referencia_mes).padStart(2,'0')}/${leituraPosterior.referencia_ano}).`
     });
   }
 
@@ -72,7 +114,7 @@ async function registrar(req, res) {
       data: {
         medidor_id,
         user_id: req.user.id,
-        valor: parseFloat(valor),
+        valor: valorNum, // já interpretado com casas_decimais corretas
         empresa_snapshot,
         metodo: metodo || 'MANUAL',
         fonte: 'APP',
@@ -99,20 +141,84 @@ async function registrar(req, res) {
 
 // ── EDITAR LEITURA (GESTOR/ADMIN apenas) ─────────────
 async function editar(req, res) {
-  const { valor, observacoes, metodo } = req.body;
+  const { valor, observacoes, metodo, referencia_dia, referencia_mes, referencia_ano } = req.body;
   const { id } = req.params;
 
   const leitura = await prisma.leitura.findUnique({ where: { id } });
   if (!leitura) return res.status(404).json({ erro: 'Leitura não encontrada.' });
 
+  // Se mudar a data, verifica se já existe outra leitura naquele dia
+  if (referencia_dia && referencia_mes && referencia_ano) {
+    const diaInt = parseInt(referencia_dia), mesInt = parseInt(referencia_mes), anoInt = parseInt(referencia_ano);
+    if (diaInt !== leitura.referencia_dia || mesInt !== leitura.referencia_mes || anoInt !== leitura.referencia_ano) {
+      const existe = await prisma.leitura.findUnique({
+        where: { medidor_id_referencia_dia_referencia_mes_referencia_ano: {
+          medidor_id: leitura.medidor_id, referencia_dia: diaInt, referencia_mes: mesInt, referencia_ano: anoInt
+        }}
+      });
+      if (existe) return res.status(409).json({ erro: 'Já existe uma leitura nessa data para este medidor.' });
+    }
+  }
+
+  // Interpreta valor com casas_decimais do medidor
+  let valorFinal = undefined;
+  if (valor !== undefined) {
+    const med = await prisma.medidor.findUnique({ where: { id: leitura.medidor_id }, select: { casas_decimais: true } });
+    const { interpretarInput, formatarValor } = require('../utils/formatacao');
+    valorFinal = interpretarInput(valor, med?.casas_decimais ?? 3);
+    const casas = med?.casas_decimais ?? 3;
+
+    // Usa a data final (nova ou atual) para validar vizinhos
+    const diaVal = referencia_dia ? parseInt(referencia_dia) : leitura.referencia_dia;
+    const mesVal = referencia_mes ? parseInt(referencia_mes) : leitura.referencia_mes;
+    const anoVal = referencia_ano ? parseInt(referencia_ano) : leitura.referencia_ano;
+
+    const anterior = await prisma.leitura.findFirst({
+      where: { medidor_id: leitura.medidor_id, id: { not: id },
+        OR: [
+          { referencia_ano: { lt: anoVal } },
+          { referencia_ano: anoVal, referencia_mes: { lt: mesVal } },
+          { referencia_ano: anoVal, referencia_mes: mesVal, referencia_dia: { lt: diaVal } },
+        ],
+      },
+      orderBy: [{ referencia_ano: 'desc' }, { referencia_mes: 'desc' }, { referencia_dia: 'desc' }],
+    });
+    if (anterior && valorFinal < parseFloat(anterior.valor)) {
+      return res.status(400).json({
+        erro: `Valor menor que a leitura anterior (${formatarValor(anterior.valor, casas)} em ${String(anterior.referencia_dia).padStart(2,'0')}/${String(anterior.referencia_mes).padStart(2,'0')}).`
+      });
+    }
+
+    const posterior = await prisma.leitura.findFirst({
+      where: { medidor_id: leitura.medidor_id, id: { not: id },
+        OR: [
+          { referencia_ano: { gt: anoVal } },
+          { referencia_ano: anoVal, referencia_mes: { gt: mesVal } },
+          { referencia_ano: anoVal, referencia_mes: mesVal, referencia_dia: { gt: diaVal } },
+        ],
+      },
+      orderBy: [{ referencia_ano: 'asc' }, { referencia_mes: 'asc' }, { referencia_dia: 'asc' }],
+    });
+    if (posterior && valorFinal > parseFloat(posterior.valor)) {
+      return res.status(400).json({
+        erro: `Valor maior que a leitura posterior (${formatarValor(posterior.valor, casas)} em ${String(posterior.referencia_dia).padStart(2,'0')}/${String(posterior.referencia_mes).padStart(2,'0')}).`
+      });
+    }
+  }
+
+  const data = {
+    observacoes,
+    metodo,
+    editado_por_id: req.user.id,
+  };
+  if (valorFinal !== undefined) data.valor = valorFinal;
+  if (referencia_dia) data.referencia_dia = parseInt(referencia_dia);
+  if (referencia_mes) data.referencia_mes = parseInt(referencia_mes);
+  if (referencia_ano) data.referencia_ano = parseInt(referencia_ano);
+
   const atualizada = await prisma.leitura.update({
     where: { id },
-    data: {
-      valor: valor !== undefined ? parseFloat(valor) : undefined,
-      observacoes,
-      metodo,
-      editado_por_id: req.user.id,
-    },
+    data,
     include: {
       medidor: { include: { unidade: { select: { identificador: true } } } },
       user:        { select: { nome: true } },

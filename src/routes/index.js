@@ -44,18 +44,21 @@ router.post('/medidores',     auth, autorizar('ADMIN', 'GESTOR'), medidoresCtrl.
 router.put ('/medidores/:id', auth, autorizar('ADMIN', 'GESTOR'), medidoresCtrl.atualizarMedidor);
 
 // ── LEITURAS ──────────────────────────────────────────────────
-router.post('/leituras/analisar',          auth, upload.single('imagem'), leiturasCtrl.analisar);
-router.post('/leituras',                   auth, upload.single('imagem'), leiturasCtrl.registrar);
-router.put ('/leituras/:id',               auth, autorizar('ADMIN','GESTOR'), leiturasCtrl.editar);
-router.get ('/leituras',                   auth, leiturasCtrl.listar);
-router.get ('/leituras/dashboard',         auth, leiturasCtrl.dashboard);
-router.get ('/leituras/relatorio',         auth, leiturasCtrl.relatorio);
-router.get ('/leituras/dia/:medidor_id',   auth, leiturasCtrl.buscarDia);
+router.post  ('/leituras/analisar',        auth, upload.single('imagem'), leiturasCtrl.analisar);
+router.post  ('/leituras',                 auth, upload.single('imagem'), leiturasCtrl.registrar);
+router.put   ('/leituras/:id',             auth, autorizar('ADMIN','GESTOR'), leiturasCtrl.editar);
+router.delete('/leituras/:id',             auth, autorizar('ADMIN','GESTOR'), leiturasCtrl.deletar);
+router.get   ('/leituras',                 auth, leiturasCtrl.listar);
+router.get   ('/leituras/dashboard',       auth, leiturasCtrl.dashboard);
+router.get   ('/leituras/relatorio',       auth, leiturasCtrl.relatorio);
+router.get   ('/leituras/dia/:medidor_id', auth, leiturasCtrl.buscarDia);
 
 // ── RELATÓRIOS ───────────────────────────────────────────────
-router.get('/relatorios/periodo',  auth, autorizar('ADMIN','GESTOR'), relatorioCtrl.periodo);
-router.get('/relatorios/mensal',   auth, autorizar('ADMIN','GESTOR'), relatorioCtrl.mensal);
-router.get('/relatorios/alertas',  auth, relatorioCtrl.alertas);
-router.get('/relatorios/extrato',  auth, autorizar('ADMIN','GESTOR'), relatorioCtrl.extrato); // alertas usados internamente tb pelo leitor
+router.get('/relatorios/periodo',         auth, autorizar('ADMIN','GESTOR'), relatorioCtrl.periodo);
+router.get('/relatorios/mensal',          auth, autorizar('ADMIN','GESTOR'), relatorioCtrl.mensal);
+router.get('/relatorios/alertas',         auth, relatorioCtrl.alertas);
+router.get('/relatorios/extrato',         auth, autorizar('ADMIN','GESTOR'), relatorioCtrl.extrato);
+router.get('/relatorios/consumo-grafico',        auth, autorizar('ADMIN','GESTOR'), relatorioCtrl.consumoGrafico);
+router.get('/relatorios/consumo-grafico-periodo', auth, autorizar('ADMIN','GESTOR'), relatorioCtrl.consumoGraficoPeriodo);
 
 module.exports = router;

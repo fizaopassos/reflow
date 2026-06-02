@@ -28,14 +28,12 @@ async function registrar(req, res) {
     return res.status(400).json({ erro: 'medidor_id, valor, referencia_dia, referencia_mes e referencia_ano são obrigatórios.' });
   }
 
-  // Busca casas_decimais do medidor para interpretar o input corretamente
   const medidorCasas = await prisma.medidor.findUnique({
     where: { id: medidor_id },
     select: { casas_decimais: true },
   });
   const casasDecimais = medidorCasas?.casas_decimais ?? 3;
 
-  // Interpreta o input (aceita qualquer formato: "4952634", "4952,634", "4.952,634")
   const valorNum = interpretarInput(valor, casasDecimais);
   if (isNaN(valorNum) || valorNum < 0) {
     return res.status(400).json({ erro: 'Valor inválido.' });
@@ -47,7 +45,6 @@ async function registrar(req, res) {
   const { formatarValor } = require('../utils/formatacao');
   const diaRef = parseInt(referencia_dia), mesRef = parseInt(referencia_mes), anoRef = parseInt(referencia_ano);
 
-  // Leitura imediatamente ANTERIOR na sequência de datas
   const leituraAnterior = await prisma.leitura.findFirst({
     where: {
       medidor_id,
@@ -70,30 +67,6 @@ async function registrar(req, res) {
     });
   }
 
-  // Leitura imediatamente POSTERIOR na sequência de datas
-  const leituraPosterior = await prisma.leitura.findFirst({
-    where: {
-      medidor_id,
-      OR: [
-        { referencia_ano: { gt: anoRef } },
-        { referencia_ano: anoRef, referencia_mes: { gt: mesRef } },
-        { referencia_ano: anoRef, referencia_mes: mesRef, referencia_dia: { gt: diaRef } },
-      ],
-    },
-    orderBy: [
-      { referencia_ano: 'asc' },
-      { referencia_mes: 'asc' },
-      { referencia_dia: 'asc' },
-    ],
-  });
-
-  if (leituraPosterior && valorNum > parseFloat(leituraPosterior.valor)) {
-    return res.status(400).json({
-      erro: `Valor maior que a leitura do dia seguinte (${formatarValor(leituraPosterior.valor, casasDecimais)} em ${String(leituraPosterior.referencia_dia).padStart(2,'0')}/${String(leituraPosterior.referencia_mes).padStart(2,'0')}/${leituraPosterior.referencia_ano}).`
-    });
-  }
-
-  // Busca empresa atual da unidade para snapshot
   const medidorInfo = await prisma.medidor.findUnique({
     where: { id: medidor_id },
     include: { unidade: { select: { empresa: true } } },
@@ -114,7 +87,7 @@ async function registrar(req, res) {
       data: {
         medidor_id,
         user_id: req.user.id,
-        valor: valorNum, // já interpretado com casas_decimais corretas
+        valor: valorNum,
         empresa_snapshot,
         metodo: metodo || 'MANUAL',
         fonte: 'APP',
@@ -147,7 +120,6 @@ async function editar(req, res) {
   const leitura = await prisma.leitura.findUnique({ where: { id } });
   if (!leitura) return res.status(404).json({ erro: 'Leitura não encontrada.' });
 
-  // Se mudar a data, verifica se já existe outra leitura naquele dia
   if (referencia_dia && referencia_mes && referencia_ano) {
     const diaInt = parseInt(referencia_dia), mesInt = parseInt(referencia_mes), anoInt = parseInt(referencia_ano);
     if (diaInt !== leitura.referencia_dia || mesInt !== leitura.referencia_mes || anoInt !== leitura.referencia_ano) {
@@ -160,7 +132,6 @@ async function editar(req, res) {
     }
   }
 
-  // Interpreta valor com casas_decimais do medidor
   let valorFinal = undefined;
   if (valor !== undefined) {
     const med = await prisma.medidor.findUnique({ where: { id: leitura.medidor_id }, select: { casas_decimais: true } });
@@ -168,7 +139,6 @@ async function editar(req, res) {
     valorFinal = interpretarInput(valor, med?.casas_decimais ?? 3);
     const casas = med?.casas_decimais ?? 3;
 
-    // Usa a data final (nova ou atual) para validar vizinhos
     const diaVal = referencia_dia ? parseInt(referencia_dia) : leitura.referencia_dia;
     const mesVal = referencia_mes ? parseInt(referencia_mes) : leitura.referencia_mes;
     const anoVal = referencia_ano ? parseInt(referencia_ano) : leitura.referencia_ano;
@@ -186,22 +156,6 @@ async function editar(req, res) {
     if (anterior && valorFinal < parseFloat(anterior.valor)) {
       return res.status(400).json({
         erro: `Valor menor que a leitura anterior (${formatarValor(anterior.valor, casas)} em ${String(anterior.referencia_dia).padStart(2,'0')}/${String(anterior.referencia_mes).padStart(2,'0')}).`
-      });
-    }
-
-    const posterior = await prisma.leitura.findFirst({
-      where: { medidor_id: leitura.medidor_id, id: { not: id },
-        OR: [
-          { referencia_ano: { gt: anoVal } },
-          { referencia_ano: anoVal, referencia_mes: { gt: mesVal } },
-          { referencia_ano: anoVal, referencia_mes: mesVal, referencia_dia: { gt: diaVal } },
-        ],
-      },
-      orderBy: [{ referencia_ano: 'asc' }, { referencia_mes: 'asc' }, { referencia_dia: 'asc' }],
-    });
-    if (posterior && valorFinal > parseFloat(posterior.valor)) {
-      return res.status(400).json({
-        erro: `Valor maior que a leitura posterior (${formatarValor(posterior.valor, casas)} em ${String(posterior.referencia_dia).padStart(2,'0')}/${String(posterior.referencia_mes).padStart(2,'0')}).`
       });
     }
   }
@@ -226,6 +180,56 @@ async function editar(req, res) {
     },
   });
   res.json(atualizada);
+}
+
+// ── DELETAR LEITURA (GESTOR/ADMIN apenas) ─────────────
+async function deletar(req, res) {
+  const { id } = req.params;
+
+  const leitura = await prisma.leitura.findUnique({
+    where: { id },
+    include: {
+      medidor: {
+        include: {
+          unidade: { select: { condominio_id: true } }
+        }
+      }
+    }
+  });
+
+  if (!leitura) {
+    return res.status(404).json({ erro: 'Leitura não encontrada.' });
+  }
+
+  // GESTOR só pode excluir leituras do seu condomínio
+  if (req.user.role === 'GESTOR') {
+    const condoId = leitura.medidor.unidade.condominio_id;
+    const vinculo = await prisma.condominioGestor.findUnique({
+      where: {
+        condominio_id_user_id: {
+          condominio_id: condoId,
+          user_id: req.user.id,
+        }
+      }
+    });
+    if (!vinculo) {
+      return res.status(403).json({ erro: 'Sem permissão para excluir leitura deste condomínio.' });
+    }
+  }
+
+  // Remove o arquivo de foto do disco se existir
+  if (leitura.foto_url) {
+    try {
+      const filepath = path.join(__dirname, '../../', leitura.foto_url);
+      if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
+    } catch (e) {
+      console.warn('[deletar] Não foi possível remover a foto:', e.message);
+    }
+  }
+
+  await prisma.leitura.delete({ where: { id } });
+
+  res.json({ ok: true, mensagem: 'Leitura excluída com sucesso.' });
 }
 
 // ── LISTAR LEITURAS ───────────────────────────────────
@@ -368,7 +372,6 @@ async function relatorio(req, res) {
   });
 
   if (tipo === 'diario') {
-    // Agrupa por dia
     const porDia = {};
     leituras.forEach(l => {
       const key = l.referencia_dia;
@@ -385,7 +388,6 @@ async function relatorio(req, res) {
     return res.json({ mes: mesInt, ano: anoInt, tipo: 'diario', dias: porDia });
   }
 
-  // MENSAL — acumulado por medidor (última - primeira leitura do mês)
   const porMedidor = {};
   leituras.forEach(l => {
     if (!porMedidor[l.medidor_id]) {
@@ -431,4 +433,4 @@ async function relatorio(req, res) {
   });
 }
 
-module.exports = { analisar, registrar, editar, listar, buscarDia, dashboard, relatorio };
+module.exports = { analisar, registrar, editar, deletar, listar, buscarDia, dashboard, relatorio };

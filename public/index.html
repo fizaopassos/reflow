@@ -54,6 +54,118 @@
     <div class="section-header" style="padding-top:20px">
       <span class="section-title">Condomínios</span>
     </div>
+    <!-- Desktop only -->
+    <div class="desktop-header">
+      <div>
+        <h1>Dashboard</h1>
+        <p id="dashboard-mes-desktop"></p>
+      </div>
+      <div id="desktop-dash-condo-sel"></div>
+    </div>
+
+    <!-- ── MOBILE: progresso e pendentes ── -->
+    <div id="dash-mobile-content" style="padding:0 16px 16px">
+      <div id="dash-progresso-mobile"></div>
+    </div>
+
+    <!-- ── LINHA 1: Summary cards + Pendentes ── -->
+    <div class="dash-top-row">
+      <div class="dash-summary" id="dash-summary"></div>
+      <div class="dash-panel dash-pendentes-card" id="dash-pendentes-wrap">
+        <div class="dash-panel-title">Pendentes hoje</div>
+        <div id="dash-pendentes"></div>
+      </div>
+    </div>
+
+    <!-- ── LINHA 2: Progresso + Calendário ── -->
+    <div class="dash-grid dash-grid-2col" id="dash-grid">
+      <div class="dash-panel">
+        <div class="dash-panel-title">Progresso hoje</div>
+        <div id="dash-progresso"></div>
+      </div>
+
+      <!-- Calendário de leituras -->
+      <div class="dash-panel" id="cal-painel" style="display:none">
+        <div class="dash-panel-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <span>Cobertura de leituras</span>
+          <select id="cal-condo-sel" onchange="Calendario.trocarCondo()" class="dash-panel-sel">
+            <option value="">Carregando...</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <button class="btn-secondary btn-sm" onclick="Calendario.mesAnterior()" style="width:auto;padding:3px 10px;font-size:15px;line-height:1">&#8249;</button>
+          <span id="cal-mes-label" style="font-size:13px;font-weight:600;color:var(--text)"></span>
+          <button class="btn-secondary btn-sm" onclick="Calendario.proximoMes()" style="width:auto;padding:3px 10px;font-size:15px;line-height:1">&#8250;</button>
+        </div>
+        <div id="cal-grid" class="cal-grid"></div>
+        <div class="cal-legenda">
+          <span><span class="cal-leg-dot cal-leg-completo"></span>Completo</span>
+          <span><span class="cal-leg-dot cal-leg-parcial"></span>Parcial</span>
+          <span><span class="cal-leg-dot cal-leg-pendente"></span>Pendente</span>
+          <span><span class="cal-leg-dot cal-leg-futuro"></span>Futuro</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── LINHA 3: Consumo por período + Consumo por empresa ── -->
+    <div class="dash-grid dash-grid-2col" id="dash-grid-graficos">
+      <!-- Gráfico de período -->
+      <div class="dash-panel" id="dash-periodo-painel" style="display:none">
+        <div class="dash-panel-title" style="margin-bottom:10px">Consumo por período</div>
+        <div id="dash-periodo-condo-wrap"></div>
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <div class="field" style="flex:1;min-width:110px;margin-bottom:0">
+            <label style="font-size:11px">Início</label>
+            <input type="date" id="dash-periodo-ini" style="padding:6px 10px;font-size:13px">
+          </div>
+          <div class="field" style="flex:1;min-width:110px;margin-bottom:0">
+            <label style="font-size:11px">Fim</label>
+            <input type="date" id="dash-periodo-fim" style="padding:6px 10px;font-size:13px">
+          </div>
+          <div style="display:flex;align-items:flex-end">
+            <button class="btn-secondary btn-sm" style="white-space:nowrap" onclick="atualizarGraficoPeriodo()">Atualizar</button>
+          </div>
+        </div>
+        <p id="grafico-periodo-msg" style="font-size:13px;color:var(--text3);text-align:center;padding:8px 0"></p>
+        <div style="position:relative;width:100%">
+          <canvas id="grafico-periodo" style="display:none;width:100%"></canvas>
+        </div>
+      </div>
+
+      <!-- Gráfico consumo mensal (rosca) -->
+      <div class="dash-panel">
+        <div class="dash-panel-title">
+          Consumo por empresa
+          <select id="dash-grafico-mes" onchange="atualizarGraficoConsumo()"></select>
+        </div>
+        <canvas id="grafico-consumo" height="220"></canvas>
+        <div id="dash-grafico-condo" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- ── LINHA 4: Atalhos relatórios ── -->
+    <div class="rel-shortcuts">
+      <button class="rel-shortcut-btn" onclick="irRelatorio('periodo')">
+        <div class="ico">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M6 2v4M14 2v4M2 9h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+        <div><div class="title">Por período</div><div class="desc">Intervalo de datas</div></div>
+      </button>
+      <button class="rel-shortcut-btn" onclick="irRelatorio('mensal')">
+        <div class="ico">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M4 14l4-4 3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="2" y="2" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
+        </div>
+        <div><div class="title">Acumulado mensal</div><div class="desc">Consumo total do mês</div></div>
+      </button>
+      <button class="rel-shortcut-btn" onclick="irRelatorio('extrato')">
+        <div class="ico">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M6 6h8M6 10h8M6 14h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="2" y="2" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
+        </div>
+        <div><div class="title">Extrato por unidade</div><div class="desc">Leitura diária</div></div>
+      </button>
+    </div>
+
+    <!-- Mobile: cards normais -->
     <div id="dashboard-cards" class="cards-grid"></div>
   </div>
 
@@ -116,7 +228,7 @@
       <img id="leitura-preview" alt="Preview do medidor" style="display:none">
     </div>
 
-    <!-- Formulário de leitura — aparece após tirar foto -->
+    <!-- Formulário de leitura -->
     <form id="form-leitura" class="form-leitura" style="display:none">
       <div class="field">
         <label for="leitura-valor-input">Leitura do medidor <span style="color:var(--danger)">*</span></label>
@@ -152,6 +264,90 @@
         Salvar leitura
       </button>
     </form>
+  </div>
+
+  <!-- ── HISTÓRICO DE LEITURAS ─────────────────────── -->
+  <div class="view" id="view-historico">
+    <div class="page-header">
+      <button class="btn-back" onclick="voltarDeHistorico()">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 12L6 8l4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        Voltar
+      </button>
+      <div>
+        <h2 id="historico-titulo">Histórico</h2>
+        <div id="historico-sub" style="font-size:12px;color:var(--text3);margin-top:2px"></div>
+      </div>
+    </div>
+
+    <!-- Seletores — visíveis quando acessado pelo nav -->
+    <div id="historico-seletores" style="padding:0 16px 16px;display:none">
+      <div class="form-card">
+        <div class="field">
+          <label>Condomínio</label>
+          <select id="hist-sel-condo"></select>
+        </div>
+        <div class="field">
+          <label>Medidor</label>
+          <select id="hist-sel-medidor"></select>
+        </div>
+        <button id="hist-btn-ver" class="btn-primary btn-sm" style="width:auto;margin-top:4px">
+          Ver histórico
+        </button>
+      </div>
+    </div>
+
+    <!-- Abas: Histórico | Lançamento em massa -->
+    <div class="hist-abas" id="historico-abas" style="display:none">
+      <button class="hist-tab active" data-aba="historico" onclick="_historicoSwitchAba('historico')">
+        📋 Histórico
+      </button>
+      <button class="hist-tab" data-aba="massa" onclick="_historicoSwitchAba('massa')">
+        ⚡ Lançamento em massa
+      </button>
+    </div>
+
+    <!-- ABA: Histórico -->
+    <div id="historico-aba-historico">
+      <div id="historico-filtros" class="hist-filtros" style="display:none">
+        <select id="hist-filtro-mes" onchange="_historicoCarregar()"></select>
+        <select id="hist-filtro-ano" onchange="_historicoCarregar()"></select>
+      </div>
+      <div id="historico-lista" style="padding:0 16px 16px"></div>
+    </div>
+
+    <!-- ABA: Lançamento em massa -->
+    <div id="historico-aba-massa" style="display:none;padding:0 16px 24px">
+      <div id="massa-form">
+        <div class="form-card" style="margin-bottom:12px">
+          <div class="form-row">
+            <div class="field">
+              <label>Data início</label>
+              <input type="date" id="massa-data-ini">
+            </div>
+            <div class="field">
+              <label>Data fim</label>
+              <input type="date" id="massa-data-fim">
+            </div>
+          </div>
+          <button class="btn-secondary btn-sm" style="width:auto" onclick="massaGerarLinhas()">
+            Gerar dias
+          </button>
+        </div>
+
+        <!-- Linhas geradas dinamicamente -->
+        <div id="massa-linhas"></div>
+
+        <!-- Resultado -->
+        <div id="massa-resultado"></div>
+
+        <!-- Botão salvar — aparece após gerar linhas -->
+        <div id="massa-footer" style="margin-top:12px">
+          <button id="massa-btn-salvar" class="btn-primary" onclick="massaSalvar()">
+            💾 Salvar leituras
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ── ADMIN ───────────────────────────────────────── -->
@@ -322,7 +518,6 @@
       <div class="topbar-title">Relatórios</div>
     </div>
 
-    <!-- Filtros -->
     <div style="padding:16px">
       <div class="form-card">
         <div class="form-row">
@@ -340,7 +535,6 @@
           </div>
         </div>
 
-        <!-- Filtros mensal -->
         <div id="rel-filtros-mensal" class="form-row">
           <div class="field">
             <label>Mês</label>
@@ -359,17 +553,13 @@
           </div>
         </div>
 
-        <!-- Filtro unidade (extrato) -->
         <div id="rel-filtros-extrato" style="display:none">
           <div class="field">
             <label>Unidade (deixe vazio para todas)</label>
-            <select id="rel-unidade">
-              <option value="">Todas as unidades</option>
-            </select>
+            <select id="rel-unidade"><option value="">Todas as unidades</option></select>
           </div>
         </div>
 
-        <!-- Filtros período -->
         <div id="rel-filtros-periodo" style="display:none">
           <div class="form-row">
             <div class="field" style="flex:0 0 140px">
@@ -382,48 +572,47 @@
             </div>
             <div class="field" style="flex:1">
               <label>Unidade</label>
-              <select id="rel-unidade-periodo">
-                <option value="">Todas as unidades</option>
-              </select>
+              <select id="rel-unidade-periodo"><option value="">Todas as unidades</option></select>
             </div>
           </div>
         </div>
 
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-          <button class="btn-primary btn-sm" style="flex:1" onclick="gerarRelatorio('json')">
-            Ver relatório
-          </button>
-          <button class="btn-secondary btn-sm" onclick="gerarRelatorio('csv')">
-            ⬇ CSV
-          </button>
-          <button class="btn-secondary btn-sm" onclick="gerarRelatorio('pdf')">
-            ⬇ PDF
-          </button>
+          <button class="btn-primary btn-sm" style="flex:1" onclick="gerarRelatorio('json')">Ver relatório</button>
+          <button class="btn-secondary btn-sm" onclick="gerarRelatorio('csv')">⬇ CSV</button>
+          <button class="btn-secondary btn-sm" onclick="gerarRelatorio('pdf')">⬇ PDF</button>
         </div>
       </div>
     </div>
 
-    <!-- Resultado -->
     <div id="rel-resultado" style="padding:0 16px 16px"></div>
   </div>
 
   <!-- ── NAVBAR ──────────────────────────────────────── -->
-  <nav id="navbar" style="display:none">
-    <button data-page="dashboard">
+  <nav id="navbar" class="nav-hidden">
+    <div class="sidebar-logo">
+      <img src="/logo.png" alt="Retha">
+      <span>reflow</span>
+    </div>
+    <button data-page="dashboard" title="Dashboard">
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg>
-      Dashboard
+      <span class="nav-label">Dashboard</span>
     </button>
-    <button data-page="relatorio" id="nav-relatorio">
+    <button data-page="relatorio" id="nav-relatorio" title="Relatórios">
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 14l4-4 3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="2" y="2" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
-      Relatórios
+      <span class="nav-label">Relatórios</span>
     </button>
-    <button id="nav-admin" data-page="admin" style="display:none">
+    <button id="nav-admin" data-page="admin" style="display:none" title="Admin">
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="6" r="3.5" stroke="currentColor" stroke-width="1.5"/><path d="M3 17c0-3.5 3.1-6 7-6s7 2.5 7 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      Admin
+      <span class="nav-label">Admin</span>
     </button>
-    <button id="btn-logout">
+    <button id="nav-historico" data-page="historico" style="display:none" title="Histórico">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v6l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.5"/></svg>
+      <span class="nav-label">Histórico</span>
+    </button>
+    <button id="btn-logout" title="Sair">
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M8 10h7m0 0l-2.5-2.5M15 10l-2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M12 4H5a1 1 0 00-1 1v10a1 1 0 001 1h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      Sair
+      <span class="nav-label">Sair</span>
     </button>
   </nav>
 
@@ -452,7 +641,10 @@
     </div>
   </div>
 </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="/js/api.js"></script>
 <script src="/js/app.js"></script>
+<script src="/js/calendario.js"></script>
 </body>
 </html>

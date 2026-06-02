@@ -24,7 +24,6 @@ function diaSemana(dia, mes, ano) {
   return new Date(ano, mes - 1, dia).toLocaleDateString('pt-BR', { weekday: 'short' });
 }
 
-// Interpreta input do leitor (qualquer formato) e retorna float
 function interpretarInput(input, casas) {
   let str = String(input).trim();
   const temVirgula = str.includes(',');
@@ -98,13 +97,30 @@ function voltarDeLeitura() {
 const Navbar = {
   render() {
     const nav = document.getElementById('navbar');
-    if (!Auth.isLogged()) { nav.style.display = 'none'; return; }
-    nav.style.display = 'flex';
+    const isDesktop = window.innerWidth >= 768;
+
+    if (!Auth.isLogged()) {
+      nav.style.display = 'none';
+      nav.classList.add('nav-hidden');
+      return;
+    }
+
+    nav.classList.remove('nav-hidden');
+
+    if (isDesktop) {
+      nav.style.display = '';
+    } else {
+      nav.style.display = 'flex';
+    }
+
     nav.querySelectorAll('[data-page]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.page === Router.current);
     });
-    document.getElementById('nav-admin').style.display    = Auth.canAdmin()  ? 'flex' : 'none';
+
+    document.getElementById('nav-admin').style.display     = Auth.canAdmin()  ? 'flex' : 'none';
     document.getElementById('nav-relatorio').style.display = Auth.canManage() ? 'flex' : 'none';
+    const navHist = document.getElementById('nav-historico');
+    if (navHist) navHist.style.display = Auth.canManage() ? 'flex' : 'none';
   }
 };
 
@@ -135,27 +151,209 @@ document.getElementById('form-login')?.addEventListener('submit', async e => {
 });
 
 // DASHBOARD
+let _dashChart = null;
+let _dashChartPeriodo = null;
+let _dashCondominios = [];
+
+function _popularSelectMes() {
+  const sel = document.getElementById('dash-grafico-mes');
+  if (!sel) return;
+  const agora = new Date();
+  const opts = [];
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(agora.getFullYear(), agora.getMonth() - i, 1);
+    const m = d.getMonth() + 1;
+    const a = d.getFullYear();
+    const label = d.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+    opts.push('<option value="' + m + '/' + a + '">' + label + '</option>');
+  }
+  sel.innerHTML = opts.join('');
+}
+
+async function atualizarGraficoConsumo() {
+  if (!Auth.canManage()) return;
+  const sel = document.getElementById('dash-grafico-mes');
+  const agora = new Date();
+  const partes = (sel?.value || (agora.getMonth() + 1) + '/' + agora.getFullYear()).split('/');
+  const mes = partes[0], ano = partes[1];
+
+  let condoId = _dashCondominios[0]?.id;
+  const condoSelEl = document.getElementById('dash-grafico-condo-sel');
+  if (condoSelEl) condoId = condoSelEl.value;
+  if (!condoId) return;
+
+  const canvas = document.getElementById('grafico-consumo');
+  if (!canvas) return;
+
+  try {
+    const data = await API.get('/relatorios/consumo-grafico?condominio_id=' + condoId + '&mes=' + mes + '&ano=' + ano);
+    if (_dashChart) { _dashChart.destroy(); _dashChart = null; }
+
+    if (!data.dados || !data.dados.length) {
+      canvas.style.display = 'none';
+      return;
+    }
+    canvas.style.display = '';
+
+    const CORES = ['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#ec4899','#14b8a6','#a855f7','#f97316','#84cc16'];
+    _dashChart = new Chart(canvas, {
+      type: 'doughnut',
+      data: {
+        labels: data.dados.map(d => d.label),
+        datasets: [{
+          data: data.dados.map(d => d.consumo),
+          backgroundColor: data.dados.map((_, i) => CORES[i % CORES.length]),
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } },
+          tooltip: {
+            callbacks: {
+              label: ctx => ' ' + ctx.label + ': ' + Number(ctx.parsed).toFixed(3) + ' m³',
+            },
+          },
+        },
+      },
+    });
+  } catch (e) {
+    console.error('Erro ao carregar gráfico de consumo:', e);
+  }
+}
+
+
+async function atualizarGraficoPeriodo() {
+  if (!Auth.canManage()) return;
+
+  const ini = document.getElementById('dash-periodo-ini')?.value;
+  const fim = document.getElementById('dash-periodo-fim')?.value;
+  if (!ini || !fim) return;
+
+  let condoId = _dashCondominios[0]?.id;
+  const sel = document.getElementById('dash-periodo-condo-sel');
+  if (sel?.value) condoId = sel.value;
+  if (!condoId) return;
+
+  const canvas = document.getElementById('grafico-periodo');
+  const msgEl  = document.getElementById('grafico-periodo-msg');
+  if (!canvas) return;
+
+  if (msgEl) msgEl.textContent = 'Carregando...';
+  canvas.style.display = 'none';
+
+  try {
+    const data = await API.get(
+      '/relatorios/consumo-grafico-periodo?condominio_id=' + condoId +
+      '&data_inicio=' + ini + '&data_fim=' + fim
+    );
+
+    if (_dashChartPeriodo) { _dashChartPeriodo.destroy(); _dashChartPeriodo = null; }
+
+    if (!data.dados || !data.dados.length) {
+      if (msgEl) msgEl.textContent = 'Nenhum consumo registrado no período.';
+      return;
+    }
+
+    if (msgEl) msgEl.textContent = '';
+    canvas.style.display = '';
+
+    // Calcula altura dinâmica: mínimo 160px, 32px por barra
+    const altura = Math.max(160, data.dados.length * 38);
+    canvas.style.height = altura + 'px';
+    canvas.height = altura;
+
+    const CORES = ['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#ec4899','#14b8a6','#a855f7','#f97316','#84cc16'];
+
+    _dashChartPeriodo = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: data.dados.map(d => d.label),
+        datasets: [{
+          label: 'Consumo m³',
+          data: data.dados.map(d => d.consumo),
+          backgroundColor: data.dados.map((_, i) => CORES[i % CORES.length] + 'cc'),
+          borderColor:     data.dados.map((_, i) => CORES[i % CORES.length]),
+          borderWidth: 1.5,
+          borderRadius: 4,
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ' ' + Number(ctx.parsed.x).toFixed(3) + ' m³',
+            },
+          },
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            ticks: { font: { size: 11 } },
+            grid: { color: 'rgba(0,0,0,.06)' },
+          },
+          y: {
+            ticks: {
+              font: { size: 11 },
+              maxRotation: 0,
+              callback: function(val, idx) {
+                const label = this.getLabelForValue(val);
+                return label.length > 18 ? label.slice(0, 16) + '…' : label;
+              },
+            },
+            grid: { display: false },
+          },
+        },
+      },
+    });
+  } catch (e) {
+    console.error('Erro ao carregar gráfico de período:', e);
+    if (msgEl) msgEl.textContent = 'Erro ao carregar dados.';
+  }
+}
+
 Views.dashboard = async () => {
   const user = Auth.user;
   document.getElementById('topbar-nome').textContent = user?.nome || '';
 
-  const el = document.getElementById('dashboard-cards');
-  el.innerHTML = '<p class="loading-msg">Carregando...</p>';
-
   const agora = new Date();
-  const mes = agora.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
-  document.getElementById('dashboard-mes').textContent = 'Referência: ' + mes;
+  const mesLabel = agora.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+  document.getElementById('dashboard-mes').textContent = 'Referência: ' + mesLabel;
+  const elMesDesktop = document.getElementById('dashboard-mes-desktop');
+  if (elMesDesktop) elMesDesktop.textContent = 'Referência: ' + mesLabel;
+
+  const elProg = document.getElementById('dash-progresso');
+  elProg.innerHTML = '<p class="loading-msg">Carregando...</p>';
 
   try {
     const data = await API.dashboard();
     if (!data.condominios.length) {
-      el.innerHTML = '<p class="empty-msg">Nenhum condomínio disponível.</p>';
+      elProg.innerHTML = '<p class="empty-msg">Nenhum condomínio disponível.</p>';
       return;
     }
-    el.innerHTML = data.condominios.map(c => {
+
+    const totalMedidores = data.condominios.reduce((s, c) => s + c.total_medidores, 0);
+    const totalLidos     = data.condominios.reduce((s, c) => s + c.lidos, 0);
+    const totalPendentes = data.condominios.reduce((s, c) => s + c.pendentes, 0);
+    const elSum = document.getElementById('dash-summary');
+    if (elSum) {
+      const pctGeral = totalMedidores > 0 ? Math.round(totalLidos / totalMedidores * 100) : 0;
+      elSum.innerHTML =
+        '<div class="dash-summary-card' + (pctGeral === 100 ? ' ok' : '') + '"><span class="val">' + totalLidos + '</span><span class="lbl">Lidos hoje</span></div>' +
+        '<div class="dash-summary-card' + (totalPendentes > 0 ? ' warn' : ' ok') + '"><span class="val">' + totalPendentes + '</span><span class="lbl">Pendentes</span></div>' +
+        '<div class="dash-summary-card"><span class="val">' + totalMedidores + '</span><span class="lbl">Total medidores</span></div>';
+    }
+
+    const _renderCondo = c => {
       const pct = c.percentual;
       const badgeClass = pct === 100 ? 'badge-ok' : pct > 50 ? 'badge-warn' : 'badge-pend';
-      return '<div class="card card-condo" onclick="Router.go(\'medicoes\',{condominio_id:\'' + c.id + '\',nome:\'' + c.nome.replace(/'/g, '') + '\'})">' +
+      const nomeEsc = c.nome.replace(/"/g, '');
+      return '<div class="card card-condo" onclick="Router.go(&quot;medicoes&quot;,{condominio_id:&quot;' + c.id + '&quot;,nome:&quot;' + nomeEsc + '&quot;})">' +
         '<div class="card-header"><span class="card-title">' + c.nome + '</span>' +
         '<span class="badge ' + badgeClass + '">' + pct + '%</span></div>' +
         '<div class="progress-bar"><div class="progress-fill" style="width:' + pct + '%"></div></div>' +
@@ -164,9 +362,52 @@ Views.dashboard = async () => {
         '<span>⏳ ' + c.pendentes + ' pendentes</span>' +
         '<span>Total: ' + c.total_medidores + '</span>' +
         '</div></div>';
-    }).join('');
+    };
+    const condosHtml = data.condominios.map(_renderCondo).join('');
+    elProg.innerHTML = condosHtml;
+    const elProgMobile = document.getElementById('dash-progresso-mobile');
+    if (elProgMobile) elProgMobile.innerHTML = condosHtml;
+
+    const elPend = document.getElementById('dash-pendentes');
+    if (elPend) {
+      const comPendentes = data.condominios.filter(c => c.pendentes > 0);
+      elPend.innerHTML = comPendentes.length === 0
+        ? '<p style="font-size:12px;color:var(--ok);text-align:center;padding:8px 0">✓ Todos lidos</p>'
+        : comPendentes.map(c =>
+            '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);gap:8px">' +
+            '<span style="font-size:13px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + c.nome + '</span>' +
+            '<span class="badge badge-pend" style="flex-shrink:0">' + c.pendentes + '</span>' +
+            '</div>'
+          ).join('');
+    }
+
+    await Calendario.init();
+
+    if (Auth.canManage()) {
+      _dashCondominios = data.condominios;
+      _popularSelectMes();
+
+      if (data.condominios.length > 1) {
+        const opts = data.condominios.map(c => '<option value="' + c.id + '">' + c.nome + '</option>').join('');
+        const condoSel = document.getElementById('dash-grafico-condo');
+        if (condoSel) {
+          condoSel.innerHTML = '<select id="dash-grafico-condo-sel" style="margin-top:8px;width:100%" onchange="atualizarGraficoConsumo()">' + opts + '</select>';
+          condoSel.style.display = '';
+        }
+      }
+
+      await atualizarGraficoConsumo();
+      const panelPeriodo = document.getElementById('dash-periodo-painel');
+      if (panelPeriodo) panelPeriodo.style.display = '';
+      await _iniciarGraficoPeriodo();
+    } else {
+      const panel = document.getElementById('grafico-consumo')?.closest('.dash-panel');
+      if (panel) panel.style.display = 'none';
+      const panelPeriodo = document.getElementById('dash-periodo-painel');
+      if (panelPeriodo) panelPeriodo.style.display = 'none';
+    }
   } catch (err) {
-    el.innerHTML = '<p class="error-msg">' + err.message + '</p>';
+    elProg.innerHTML = '<p class="error-msg">' + err.message + '</p>';
   }
 };
 
@@ -195,7 +436,6 @@ Views.medicoes = async ({ condominio_id, nome }) => {
       return;
     }
 
-    // Mapa de leituras
     const mapaLeituras = {};
     leituras.forEach(l => {
       if (!mapaLeituras[l.medidor_id]) mapaLeituras[l.medidor_id] = { leituraHoje: null, ultimaLeitura: null };
@@ -208,6 +448,7 @@ Views.medicoes = async ({ condominio_id, nome }) => {
       }
     });
 
+    const nomeSeguro = nome.replace(/"/g, '');
     el.innerHTML = medidores.map(m => {
       const { leituraHoje, ultimaLeitura } = mapaLeituras[m.id] || {};
       const tipoIcon = { AGUA: '💧', ENERGIA: '⚡', GAS: '🔥' }[m.tipo] || '📊';
@@ -230,10 +471,10 @@ Views.medicoes = async ({ condominio_id, nome }) => {
         (empresa ? '<div style="font-size:12px;color:var(--text3)">' + empresa + '</div>' : '') +
         '</div>' + badge + alertaBadge + '</div>' +
         '<div class="card-meta"><span>Série: ' + (m.numero_serie || '—') + '</span>' + ultimaInfo + '</div>' +
+        (Auth.canManage() ? '<div style="padding:8px 0 0;border-top:1px solid var(--border);margin-top:8px"><button class="btn-historico" data-mid="' + m.id + '" data-cid="' + condominio_id + '" data-cnome="' + nomeSeguro + '" onclick="event.stopPropagation();abrirHistoricoBtn(this)">📋 Ver histórico</button></div>' : '') +
         '</div>';
     }).join('');
 
-    // Armazena dados dos medidores para abrirLeitura
     window._medidoresData = {};
     medidores.forEach(m => {
       window._medidoresData[m.id] = {
@@ -264,13 +505,11 @@ Views.leitura = async ({ medidor_id, unidade, empresa, condominio_id, condominio
   const subEl = document.getElementById('leitura-empresa-sub');
   if (subEl) subEl.textContent = empresa || '';
 
-  // Carrega casas_decimais do medidor
   window._casasDecimais = 3;
   if (medidor_id) {
     try {
       const med = await API.get('/medidores/' + medidor_id);
       window._casasDecimais = med.casas_decimais ?? 3;
-      // Atualiza hint do input se já tiver valor
       const hint = document.getElementById('leitura-valor-hint');
       const casas = window._casasDecimais;
       const exemplos = {
@@ -290,14 +529,16 @@ Views.leitura = async ({ medidor_id, unidade, empresa, condominio_id, condominio
   document.getElementById('leitura-mes').value = agora.getMonth() + 1;
   document.getElementById('leitura-ano').value = agora.getFullYear();
 
-  // Campos de data retroativa — só admin vê
+  // Data retroativa — admin vê, pré-preenchida se vier do calendário
   const campoData = document.getElementById('campo-data-retroativa');
   if (campoData) {
     campoData.style.display = Auth.canAdmin() ? 'block' : 'none';
     if (Auth.canAdmin()) {
-      document.getElementById('leitura-dia-input').value = agora.getDate();
-      document.getElementById('leitura-mes-input').value = agora.getMonth() + 1;
-      document.getElementById('leitura-ano-input').value = agora.getFullYear();
+      const retro = window._dataRetroativa || {};
+      document.getElementById('leitura-dia-input').value = retro.dia || agora.getDate();
+      document.getElementById('leitura-mes-input').value = retro.mes || (agora.getMonth() + 1);
+      document.getElementById('leitura-ano-input').value = retro.ano || agora.getFullYear();
+      window._dataRetroativa = null;
     }
   }
 
@@ -315,7 +556,6 @@ Views.leitura = async ({ medidor_id, unidade, empresa, condominio_id, condominio
   document.getElementById('leitura-obs-input').value         = '';
   document.getElementById('form-leitura-submit').textContent = 'Salvar leitura';
 
-  // Verifica se já existe leitura hoje
   if (medidor_id) {
     try {
       const leituraHoje = await API.leituras.buscarDia(medidor_id);
@@ -324,12 +564,14 @@ Views.leitura = async ({ medidor_id, unidade, empresa, condominio_id, condominio
   }
 };
 
+// ── LEITURA EXISTENTE ─────────────────────────────────
 function mostrarLeituraExistente(leitura) {
-  const el = document.getElementById('leitura-existente');
+  const el      = document.getElementById('leitura-existente');
   const canEdit = Auth.canManage();
-  const editadoPor = leitura.editado_por ? ' · editado por ' + leitura.editado_por.nome : '';
+  const editadoPor = leitura.editado_por
+    ? ' · editado por ' + leitura.editado_por.nome
+    : '';
 
-  // Mostra foto
   if (leitura.foto_url) {
     document.getElementById('captureZone').style.display     = 'block';
     document.getElementById('leitura-preview').src           = leitura.foto_url;
@@ -337,23 +579,52 @@ function mostrarLeituraExistente(leitura) {
     document.getElementById('leitura-idle').style.display    = 'none';
   }
 
-  // Bloqueia câmera para leitor
   document.getElementById('leitura-file').disabled           = !canEdit;
   document.getElementById('captureZone').style.cursor        = canEdit ? 'pointer' : 'default';
   document.getElementById('captureZone').style.pointerEvents = canEdit ? 'auto' : 'none';
 
-  const obsHtml = leitura.observacoes ? '<div class="result-obs" style="margin-top:8px">' + leitura.observacoes + '</div>' : '';
-  const editBtn = canEdit
-    ? '<div style="margin-top:14px"><button class="btn-secondary btn-sm" onclick="iniciarEdicao(\'' + leitura.id + '\',' + parseFloat(leitura.valor) + ',\'' + (leitura.observacoes || '').replace(/'/g,'') + '\')">✏️ Editar leitura</button></div>'
-    : '<div style="font-size:12px;color:var(--text3);margin-top:10px">Somente gestor ou admin pode editar.</div>';
+  const obsHtml = leitura.observacoes
+    ? '<div class="result-obs" style="margin-top:8px">' + leitura.observacoes + '</div>'
+    : '';
 
-  el.innerHTML = '<div class="leitura-existente-card">' +
-    '<div style="font-size:11px;font-weight:700;color:var(--ok);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">✓ Leitura registrada hoje</div>' +
-    '<div class="result-valor" style="font-size:38px">' + fmtValor(leitura.valor, window._casasDecimais ?? 3) + '</div>' +
-    '<div style="font-size:13px;color:var(--text2);margin-top:6px">Registrado por ' + leitura.user.nome + editadoPor + '</div>' +
-    obsHtml + editBtn + '</div>';
+  let acoesHtml = '';
+  if (canEdit) {
+    acoesHtml =
+      '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
+        '<button class="btn-secondary btn-sm" style="flex:1" onclick="iniciarEdicao(\'' +
+          leitura.id + '\',' + parseFloat(leitura.valor) + ',\'' +
+          (leitura.observacoes || '').replace(/'/g, '') + '\',' +
+          leitura.referencia_dia + ',' + leitura.referencia_mes + ',' + leitura.referencia_ano +
+        ')">✏️ Editar</button>' +
+        '<button class="btn-excluir btn-sm" style="flex:1" onclick="confirmarExclusao(\'' +
+          leitura.id + '\',\'' +
+          String(leitura.referencia_dia).padStart(2,'0') + '/' +
+          String(leitura.referencia_mes).padStart(2,'0') + '/' +
+          leitura.referencia_ano +
+        '\')">🗑️ Excluir</button>' +
+      '</div>';
+  } else {
+    acoesHtml =
+      '<div style="font-size:12px;color:var(--text3);margin-top:10px">' +
+      'Somente gestor ou admin pode editar.' +
+      '</div>';
+  }
+
+  el.innerHTML =
+    '<div class="leitura-existente-card">' +
+      '<div style="font-size:11px;font-weight:700;color:var(--ok);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">✓ Leitura registrada</div>' +
+      '<div class="result-valor" style="font-size:38px">' + fmtValor(leitura.valor, window._casasDecimais ?? 3) + '</div>' +
+      '<div style="font-size:13px;color:var(--text2);margin-top:6px">Registrado por ' + leitura.user.nome + editadoPor + '</div>' +
+      '<div style="font-size:12px;color:var(--text3);margin-top:2px">' +
+        String(leitura.referencia_dia).padStart(2,'0') + '/' +
+        String(leitura.referencia_mes).padStart(2,'0') + '/' +
+        leitura.referencia_ano +
+      '</div>' +
+      obsHtml +
+      acoesHtml +
+    '</div>';
+
   el.style.display = 'block';
-
   document.getElementById('form-leitura').style.display = 'none';
   if (!leitura.foto_url) document.getElementById('captureZone').style.display = 'none';
 }
@@ -367,7 +638,6 @@ function iniciarEdicao(leituraId, valorAtual, obsAtual, dia, mes, ano) {
   document.getElementById('form-leitura-submit').textContent  = '💾 Salvar alteração';
   document.getElementById('captureZone').style.display        = 'none';
 
-  // Admin pode editar a data da leitura
   const campoData = document.getElementById('campo-data-retroativa');
   if (campoData && Auth.canAdmin()) {
     campoData.style.display = 'block';
@@ -377,6 +647,25 @@ function iniciarEdicao(leituraId, valorAtual, obsAtual, dia, mes, ano) {
   }
 
   document.getElementById('leitura-valor-input').focus();
+}
+
+// ── EXCLUSÃO DE LEITURA ───────────────────────────────
+function confirmarExclusao(leituraId, dataStr) {
+  abrirModal({
+    icone: '🗑️',
+    titulo: 'Excluir leitura',
+    msg: 'Deseja excluir a leitura de ' + dataStr + '? Esta ação não pode ser desfeita.',
+    tipo: 'danger',
+    onConfirm: async () => {
+      try {
+        await API.leituras.deletar(leituraId);
+        toast('Leitura excluída.', 'ok');
+        setTimeout(() => voltarDeLeitura(), 600);
+      } catch (err) {
+        toast(err.message, 'erro');
+      }
+    }
+  });
 }
 
 // Preview formatação enquanto digita
@@ -435,7 +724,6 @@ document.getElementById('form-leitura')?.addEventListener('submit', async e => {
       if (!file) { toast('Foto obrigatória. Fotografe o medidor.', 'warn'); btn.disabled = false; return; }
       const obs = document.getElementById('leitura-obs-input')?.value;
 
-      // Admin pode usar data retroativa
       let diaFinal = dia, mesFinal = mes, anoFinal = ano;
       if (Auth.canAdmin()) {
         const diaR = document.getElementById('leitura-dia-input')?.value;
@@ -464,6 +752,542 @@ document.getElementById('form-leitura')?.addEventListener('submit', async e => {
   }
 });
 
+
+
+async function _iniciarGraficoPeriodo() {
+  if (!Auth.canManage()) return;
+
+  // Datas padrão: últimos 30 dias
+  const hoje = new Date();
+  const ini  = new Date(hoje); ini.setDate(ini.getDate() - 29);
+  const fmt  = d => d.toISOString().split('T')[0];
+
+  const iniEl = document.getElementById('dash-periodo-ini');
+  const fimEl = document.getElementById('dash-periodo-fim');
+  if (iniEl && !iniEl.value) iniEl.value = fmt(ini);
+  if (fimEl && !fimEl.value) fimEl.value = fmt(hoje);
+
+  // Popula select de condomínios se mais de um
+  if (_dashCondominios.length > 1) {
+    const condoWrap = document.getElementById('dash-periodo-condo-wrap');
+    if (condoWrap) {
+      const opts = _dashCondominios.map(c => '<option value="' + c.id + '">' + c.nome + '</option>').join('');
+      condoWrap.innerHTML = '<select id="dash-periodo-condo-sel" style="font-size:12px;padding:4px 8px;width:100%;margin-bottom:8px" onchange="atualizarGraficoPeriodo()">' + opts + '</select>';
+    }
+  }
+
+  await atualizarGraficoPeriodo();
+}
+
+// ── HISTÓRICO DE LEITURAS ─────────────────────────────
+Views.historico = async ({ medidor_id, medidor_label, condominio_id, condominio_nome } = {}) => {
+  if (!Auth.canManage()) { Router.go('dashboard'); return; }
+
+  window._historicoCtx = { medidor_id, medidor_label, condominio_id, condominio_nome };
+
+  const tituloEl  = document.getElementById('historico-titulo');
+  const subEl     = document.getElementById('historico-sub');
+  const seletores = document.getElementById('historico-seletores');
+  const filtros   = document.getElementById('historico-filtros');
+  const lista     = document.getElementById('historico-lista');
+  const massaPanel = document.getElementById('historico-massa-panel');
+
+  // Reseta abas
+  _historicoSwitchAba('historico');
+
+  if (medidor_id) {
+    if (tituloEl) tituloEl.textContent = medidor_label || 'Histórico';
+    if (subEl)    subEl.textContent    = condominio_nome || '';
+    if (seletores)  seletores.style.display  = 'none';
+    const abasEl = document.getElementById('historico-abas');
+    if (abasEl) abasEl.style.display = '';
+    if (filtros)    filtros.style.display    = '';
+    _historicoPopularFiltros();
+    await _historicoCarregar();
+    return;
+  }
+
+  if (tituloEl) tituloEl.textContent = 'Histórico';
+  if (subEl)    subEl.textContent    = 'Selecione o medidor';
+  if (seletores)   seletores.style.display   = '';
+  if (filtros)     filtros.style.display     = 'none';
+  if (massaPanel)  massaPanel.style.display  = 'none';
+  if (lista)       lista.innerHTML = '';
+
+  await _historicoPopularSeletores();
+}
+
+async function _historicoPopularSeletores() {
+  const selCondo = document.getElementById('hist-sel-condo');
+  const selMed   = document.getElementById('hist-sel-medidor');
+  const btnVer   = document.getElementById('hist-btn-ver');
+  if (!selCondo) return;
+
+  try {
+    const condos = await API.condominios.listar();
+    selCondo.innerHTML = '<option value="">Selecione o condomínio...</option>' +
+      condos.map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
+    selMed.innerHTML = '<option value="">Selecione o medidor...</option>';
+
+    selCondo.onchange = async () => {
+      selMed.innerHTML = '<option value="">Carregando...</option>';
+      if (!selCondo.value) { selMed.innerHTML = '<option value="">Selecione o medidor...</option>'; return; }
+      try {
+        const meds = await API.get('/medidores?condominio_id=' + selCondo.value);
+        selMed.innerHTML = '<option value="">Selecione o medidor...</option>' +
+          meds.map(m => {
+            const label = (m.unidade?.bloco ? m.unidade.bloco + ' · ' : '') +
+                          (m.unidade?.identificador || '—') +
+                          (m.unidade?.empresa ? ' — ' + m.unidade.empresa : '');
+            return `<option value="${m.id}" data-label="${label}">${label}</option>`;
+          }).join('');
+      } catch { selMed.innerHTML = '<option value="">Erro ao carregar</option>'; }
+    };
+
+    btnVer.onclick = async () => {
+      const condoId   = selCondo.value;
+      const condoNome = selCondo.options[selCondo.selectedIndex]?.text || '';
+      const medId     = selMed.value;
+      const medLabel  = selMed.options[selMed.selectedIndex]?.text || 'Medidor';
+      if (!condoId || !medId) { toast('Selecione o condomínio e o medidor.', 'warn'); return; }
+
+      window._historicoCtx = {
+        medidor_id:      medId,
+        medidor_label:   medLabel,
+        condominio_id:   condoId,
+        condominio_nome: condoNome,
+      };
+
+      const tituloEl  = document.getElementById('historico-titulo');
+      const subEl     = document.getElementById('historico-sub');
+      const seletores = document.getElementById('historico-seletores');
+      const filtros   = document.getElementById('historico-filtros');
+      if (tituloEl)  tituloEl.textContent = medLabel;
+      if (subEl)     subEl.textContent    = condoNome;
+      if (seletores) seletores.style.display = 'none';
+      if (filtros)   filtros.style.display   = '';
+      const abasEl = document.getElementById('historico-abas');
+      if (abasEl) abasEl.style.display = '';
+
+      _historicoSwitchAba('historico');
+      _historicoPopularFiltros();
+      await _historicoCarregar();
+    };
+  } catch (err) {
+    document.getElementById('historico-lista').innerHTML = '<p class="error-msg">' + err.message + '</p>';
+  }
+}
+
+function _historicoSwitchAba(aba) {
+  const abas   = ['historico', 'massa'];
+  const tabEls = document.querySelectorAll('.hist-tab');
+  const panels = {
+    historico: document.getElementById('historico-aba-historico'),
+    massa:     document.getElementById('historico-aba-massa'),
+  };
+  tabEls.forEach(t => t.classList.toggle('active', t.dataset.aba === aba));
+  Object.entries(panels).forEach(([k, el]) => { if (el) el.style.display = k === aba ? '' : 'none'; });
+  if (aba === 'massa' && window._historicoCtx?.medidor_id) {
+    _massaIniciar();
+  }
+}
+
+function _historicoPopularFiltros() {
+  const selMes = document.getElementById('hist-filtro-mes');
+  const selAno = document.getElementById('hist-filtro-ano');
+  if (!selMes || !selAno) return;
+
+  const agora = new Date();
+  const meses = ['Todos','Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                  'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  selMes.innerHTML = meses.map((m, i) =>
+    `<option value="${i === 0 ? '' : i}"${i === agora.getMonth() + 1 ? ' selected' : ''}>${m}</option>`
+  ).join('');
+
+  const anos = [];
+  for (let i = 0; i < 3; i++) anos.push(agora.getFullYear() - i);
+  selAno.innerHTML = anos.map(a =>
+    `<option value="${a}"${a === agora.getFullYear() ? ' selected' : ''}>${a}</option>`
+  ).join('');
+}
+
+async function _historicoCarregar() {
+  const el  = document.getElementById('historico-lista');
+  const ctx = window._historicoCtx;
+  if (!el || !ctx?.medidor_id) return;
+
+  el.innerHTML = '<p class="loading-msg">Carregando...</p>';
+
+  const mes = document.getElementById('hist-filtro-mes')?.value || '';
+  const ano = document.getElementById('hist-filtro-ano')?.value || '';
+
+  try {
+    let url = '/leituras?medidor_id=' + ctx.medidor_id;
+    if (mes) url += '&mes=' + mes;
+    if (ano) url += '&ano=' + ano;
+
+    const [leituras, med] = await Promise.all([
+      API.get(url),
+      API.get('/medidores/' + ctx.medidor_id).catch(() => ({ casas_decimais: 3 })),
+    ]);
+    const casas = med.casas_decimais ?? 3;
+
+    if (!leituras.length) {
+      el.innerHTML = '<p class="empty-msg">Nenhuma leitura encontrada para este período.</p>';
+      return;
+    }
+
+    el.innerHTML = leituras.map(l => {
+      const dataStr =
+        String(l.referencia_dia).padStart(2,'0') + '/' +
+        String(l.referencia_mes).padStart(2,'0') + '/' +
+        l.referencia_ano;
+      const diaSem     = diaSemana(l.referencia_dia, l.referencia_mes, l.referencia_ano);
+      const editadoPor = l.editado_por ? ' · editado por ' + l.editado_por.nome : '';
+      const metodoIcon = { GEMINI: '🤖', MANUAL: '✍️', AUTOMATICO: '⚙️' }[l.metodo] || '';
+      const fotoHtml   = l.foto_url
+        ? `<a href="${l.foto_url}" target="_blank" class="hist-foto-link" title="Ver foto">📷</a>`
+        : '';
+      const obsHtml = l.observacoes
+        ? `<div class="hist-obs">${l.observacoes}</div>`
+        : '';
+
+      return `<div class="hist-item" id="hist-item-${l.id}">
+        <div class="hist-item-header">
+          <div>
+            <span class="hist-data">${diaSem} ${dataStr}</span>
+            <span class="hist-valor">${fmtValor(l.valor, casas)}</span>
+          </div>
+          <div class="hist-actions">
+            ${fotoHtml}
+            <button class="btn-secondary btn-sm" onclick="historicoIniciarEdicao('${l.id}',${parseFloat(l.valor)},'${(l.observacoes||'').replace(/'/g,'')}',${l.referencia_dia},${l.referencia_mes},${l.referencia_ano})">✏️</button>
+            <button class="btn-excluir btn-sm" onclick="historicoConfirmarExclusao('${l.id}','${dataStr}')">🗑️</button>
+          </div>
+        </div>
+        <div class="hist-meta">
+          <span>${metodoIcon} ${l.user.nome}${editadoPor}</span>
+        </div>
+        ${obsHtml}
+        <div class="hist-edit-form" id="hist-edit-${l.id}" style="display:none">
+          <div class="form-row" style="margin-top:10px">
+            <div class="field" style="flex:2;min-width:120px">
+              <label>Valor</label>
+              <input type="text" id="hist-valor-${l.id}" value="${parseFloat(l.valor)}" inputmode="decimal">
+            </div>
+          </div>
+          <div class="field">
+            <label>Observações</label>
+            <input type="text" id="hist-obs-${l.id}" value="${l.observacoes || ''}" placeholder="opcional">
+          </div>
+          <div style="display:flex;gap:8px;margin-top:4px">
+            <button class="btn-primary btn-sm" style="flex:1" onclick="historicoSalvarEdicao('${l.id}',${l.referencia_dia},${l.referencia_mes},${l.referencia_ano})">💾 Salvar</button>
+            <button class="btn-secondary btn-sm" style="flex:1" onclick="historicoFecharEdicao('${l.id}')">Cancelar</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+  } catch (err) {
+    el.innerHTML = '<p class="error-msg">' + err.message + '</p>';
+  }
+}
+
+function historicoIniciarEdicao(id) {
+  document.querySelectorAll('.hist-edit-form').forEach(f => f.style.display = 'none');
+  const form = document.getElementById('hist-edit-' + id);
+  if (form) form.style.display = 'block';
+}
+
+function historicoFecharEdicao(id) {
+  const form = document.getElementById('hist-edit-' + id);
+  if (form) form.style.display = 'none';
+}
+
+async function historicoSalvarEdicao(id, dia, mes, ano) {
+  const valor = document.getElementById('hist-valor-' + id)?.value;
+  const obs   = document.getElementById('hist-obs-'   + id)?.value;
+
+  if (!valor) { toast('Digite um valor.', 'warn'); return; }
+
+  try {
+    await API.leituras.editar(id, {
+      valor,
+      observacoes:    obs,
+      referencia_dia: dia,
+      referencia_mes: mes,
+      referencia_ano: ano,
+    });
+    toast('✓ Leitura atualizada!', 'ok');
+    await _historicoCarregar();
+  } catch (err) {
+    toast(err.message, 'erro');
+  }
+}
+
+function historicoConfirmarExclusao(id, dataStr) {
+  abrirModal({
+    icone: '🗑️',
+    titulo: 'Excluir leitura',
+    msg: 'Deseja excluir a leitura de ' + dataStr + '? Esta ação não pode ser desfeita.',
+    tipo: 'danger',
+    onConfirm: async () => {
+      try {
+        await API.leituras.deletar(id);
+        toast('Leitura excluída.', 'ok');
+        await _historicoCarregar();
+      } catch (err) {
+        toast(err.message, 'erro');
+      }
+    }
+  });
+}
+
+function voltarDeHistorico() {
+  const ctx = window._historicoCtx;
+  if (ctx?.condominio_id) {
+    Router.go('medicoes', { condominio_id: ctx.condominio_id, nome: ctx.condominio_nome });
+  } else {
+    Router.go('dashboard');
+  }
+}
+
+function abrirHistorico(medidorId, condoId, condoNome) {
+  const dados = window._medidoresData?.[medidorId] || {};
+  Router.go('historico', {
+    medidor_id:      medidorId,
+    medidor_label:   dados.unidade || 'Medidor',
+    condominio_id:   condoId,
+    condominio_nome: condoNome,
+  });
+}
+
+// Versão chamada pelo botão via data-attributes (evita problemas de escape)
+function abrirHistoricoBtn(btn) {
+  const mid   = btn.dataset.mid;
+  const cid   = btn.dataset.cid;
+  const cnome = btn.dataset.cnome;
+  abrirHistorico(mid, cid, cnome);
+}
+
+
+// ── LANÇAMENTO EM MASSA ───────────────────────────────
+async function _massaIniciar() {
+  const panel = document.getElementById('massa-form');
+  if (!panel) return;
+
+  // Define datas padrão: últimos 7 dias
+  const hoje = new Date();
+  const ini  = new Date(hoje);
+  ini.setDate(ini.getDate() - 6);
+
+  const fmtDate = d => d.toISOString().split('T')[0];
+  const iniEl = document.getElementById('massa-data-ini');
+  const fimEl = document.getElementById('massa-data-fim');
+  if (iniEl && !iniEl.value) iniEl.value = fmtDate(ini);
+  if (fimEl && !fimEl.value) fimEl.value = fmtDate(hoje);
+
+  document.getElementById('massa-linhas').innerHTML = '';
+  document.getElementById('massa-resultado').innerHTML = '';
+}
+
+async function massaGerarLinhas() {
+  const ctx  = window._historicoCtx;
+  const iniV = document.getElementById('massa-data-ini')?.value;
+  const fimV = document.getElementById('massa-data-fim')?.value;
+  if (!ctx?.medidor_id)    { toast('Nenhum medidor selecionado.', 'warn'); return; }
+  if (!iniV || !fimV)      { toast('Preencha as datas.', 'warn'); return; }
+  if (iniV > fimV)         { toast('Data inicial maior que final.', 'warn'); return; }
+
+  const ini = new Date(iniV + 'T00:00:00');
+  const fim = new Date(fimV + 'T00:00:00');
+  const diffDias = Math.round((fim - ini) / 86400000) + 1;
+  if (diffDias > 31) { toast('Máximo de 31 dias por vez.', 'warn'); return; }
+
+  const el = document.getElementById('massa-linhas');
+  el.innerHTML = '<p class="loading-msg">Verificando leituras existentes...</p>';
+
+  // Busca leituras já existentes no período
+  const mesIni = ini.getMonth() + 1, anoIni = ini.getFullYear();
+  const mesFim = fim.getMonth() + 1, anoFim = fim.getFullYear();
+
+  let leituraExistentes = [];
+  try {
+    // Busca por cada mês envolvido
+    const mesesEnvolvidos = new Set();
+    let cur = new Date(ini);
+    while (cur <= fim) {
+      mesesEnvolvidos.add((cur.getMonth()+1) + '/' + cur.getFullYear());
+      cur.setMonth(cur.getMonth() + 1);
+    }
+    for (const mv of mesesEnvolvidos) {
+      const [m, a] = mv.split('/');
+      const res = await API.get('/leituras?medidor_id=' + ctx.medidor_id + '&mes=' + m + '&ano=' + a);
+      leituraExistentes = leituraExistentes.concat(res);
+    }
+  } catch {}
+
+  const existeMap = {};
+  leituraExistentes.forEach(l => {
+    const key = l.referencia_ano + '-' +
+      String(l.referencia_mes).padStart(2,'0') + '-' +
+      String(l.referencia_dia).padStart(2,'0');
+    existeMap[key] = l;
+  });
+
+  // Busca casas_decimais do medidor
+  let casas = 3;
+  try { const m = await API.get('/medidores/' + ctx.medidor_id); casas = m.casas_decimais ?? 3; } catch {}
+  window._massaCasas = casas;
+
+  const diasSemana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  let html = '';
+  let d = new Date(ini);
+
+  while (d <= fim) {
+    const ano = d.getFullYear();
+    const mes = d.getMonth() + 1;
+    const dia = d.getDate();
+    const key = ano + '-' + String(mes).padStart(2,'0') + '-' + String(dia).padStart(2,'0');
+    const dsem = diasSemana[d.getDay()];
+    const dataLabel = dsem + ' ' + String(dia).padStart(2,'0') + '/' + String(mes).padStart(2,'0') + '/' + ano;
+    const existente = existeMap[key];
+
+    if (existente) {
+      // Dia já tem leitura — mostra somente leitura, sem campos
+      html += `<div class="massa-linha massa-linha-ok">
+        <div class="massa-linha-data">${dataLabel}</div>
+        <div class="massa-linha-existente">
+          <span class="badge badge-ok">✓ ${parseFloat(existente.valor).toLocaleString('pt-BR', {minimumFractionDigits: casas, maximumFractionDigits: casas})}</span>
+          <span style="font-size:11px;color:var(--text3)">${existente.user?.nome || ''}</span>
+        </div>
+      </div>`;
+    } else {
+      html += `<div class="massa-linha" id="massa-linha-${key}" data-dia="${dia}" data-mes="${mes}" data-ano="${ano}">
+        <div class="massa-linha-data">${dataLabel}</div>
+        <div class="massa-linha-campos">
+          <input
+            type="text"
+            class="massa-valor-input"
+            id="massa-val-${key}"
+            inputmode="decimal"
+            placeholder="valor"
+            autocomplete="off"
+          >
+          <label class="massa-foto-label" title="Anexar foto">
+            📷
+            <input type="file" accept="image/*" id="massa-foto-${key}" class="massa-foto-input" onchange="massaFotoPreview(this,'${key}')">
+          </label>
+          <span class="massa-foto-preview" id="massa-prev-${key}"></span>
+        </div>
+      </div>`;
+    }
+    d.setDate(d.getDate() + 1);
+  }
+
+  el.innerHTML = html || '<p class="empty-msg">Nenhum dia pendente neste intervalo.</p>';
+
+  // Foco no primeiro campo vazio
+  const primeiro = el.querySelector('.massa-valor-input');
+  if (primeiro) setTimeout(() => primeiro.focus(), 100);
+}
+
+function massaFotoPreview(input, key) {
+  const prev = document.getElementById('massa-prev-' + key);
+  if (!prev) return;
+  if (input.files[0]) {
+    prev.innerHTML = '<span style="font-size:11px;color:var(--ok)">✓ foto</span>';
+  } else {
+    prev.innerHTML = '';
+  }
+}
+
+async function massaSalvar() {
+  const ctx   = window._historicoCtx;
+  const casas = window._massaCasas ?? 3;
+  if (!ctx?.medidor_id) { toast('Nenhum medidor selecionado.', 'warn'); return; }
+
+  const linhas = document.querySelectorAll('.massa-linha[data-dia]');
+  const paraEnviar = [];
+
+  linhas.forEach(linha => {
+    const key   = linha.id.replace('massa-linha-', '');
+    const valor = document.getElementById('massa-val-' + key)?.value?.trim();
+    if (!valor) return; // pula linhas vazias
+    const foto  = document.getElementById('massa-foto-' + key)?.files[0] || null;
+    paraEnviar.push({
+      dia:   parseInt(linha.dataset.dia),
+      mes:   parseInt(linha.dataset.mes),
+      ano:   parseInt(linha.dataset.ano),
+      valor,
+      foto,
+      key,
+    });
+  });
+
+  if (!paraEnviar.length) { toast('Nenhum valor preenchido.', 'warn'); return; }
+
+  const btnSalvar = document.getElementById('massa-btn-salvar');
+  btnSalvar.disabled = true;
+  btnSalvar.textContent = 'Salvando...';
+
+  const resultado = document.getElementById('massa-resultado');
+  resultado.innerHTML = '';
+
+  let ok = 0, erros = 0;
+
+  for (const item of paraEnviar) {
+    try {
+      const form = new FormData();
+      form.append('medidor_id',    ctx.medidor_id);
+      form.append('valor',         item.valor);
+      form.append('referencia_dia', item.dia);
+      form.append('referencia_mes', item.mes);
+      form.append('referencia_ano', item.ano);
+      form.append('metodo',        'MANUAL');
+      if (item.foto) form.append('imagem', item.foto);
+
+      await fetch('/api/leituras', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + Auth.token },
+        body: form,
+      }).then(async r => {
+        if (!r.ok) {
+          const err = await r.json();
+          throw new Error(err.erro || 'Erro ' + r.status);
+        }
+        return r.json();
+      });
+
+      // Marca linha como salva
+      const linha = document.getElementById('massa-linha-' + item.key);
+      if (linha) {
+        linha.classList.add('massa-linha-ok');
+        linha.querySelector('.massa-linha-campos').innerHTML =
+          '<span class="badge badge-ok">✓ salvo</span>';
+      }
+      ok++;
+    } catch (err) {
+      const linha = document.getElementById('massa-linha-' + item.key);
+      if (linha) {
+        linha.style.borderColor = 'var(--danger)';
+        const campos = linha.querySelector('.massa-linha-campos');
+        if (campos) campos.innerHTML += '<span style="font-size:11px;color:var(--danger);margin-left:6px">⚠ ' + err.message + '</span>';
+      }
+      erros++;
+    }
+  }
+
+  btnSalvar.disabled = false;
+  btnSalvar.textContent = '💾 Salvar leituras';
+
+  if (ok > 0 && erros === 0) {
+    toast('✓ ' + ok + ' leitura(s) salva(s)!', 'ok');
+    resultado.innerHTML = '<p style="color:var(--ok);font-weight:600;padding:8px 0">✓ ' + ok + ' leitura(s) registrada(s) com sucesso.</p>';
+  } else if (erros > 0) {
+    toast(ok + ' salvas, ' + erros + ' com erro.', 'warn');
+  }
+}
+
 // ── ADMIN TABS ────────────────────────────────────────
 function switchTab(name) {
   const tabs  = ['condos','unidades','medidores','users'];
@@ -471,7 +1295,6 @@ function switchTab(name) {
   document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   if (name === 'users') carregarUsersAdmin();
-  // Unidades e medidores só carregam após seleção de condomínio
 }
 
 Views.admin = async () => {
@@ -515,7 +1338,6 @@ async function carregarCondosAdmin() {
         '<button class="btn-primary btn-sm" onclick="adicionarLeitor(\'' + c.id + '\')">+ Vincular</button></div></div>' +
         '</div></div>';
     }).join('');
-    // Bind condo edit buttons
     el.querySelectorAll('.btn-edit-condo').forEach(btn => {
       btn.addEventListener('click', e => {
         e.stopPropagation();
@@ -611,7 +1433,6 @@ async function carregarUnidadesAdmin(condoId) {
       ' title="Editar">✏️</button>' +
       '</div></div>'
     ).join('') || '<p class="empty-msg">Nenhuma unidade neste condomínio.</p>';
-    // Bind edit buttons
     el.querySelectorAll('.btn-edit-unidade').forEach(btn => {
       btn.addEventListener('click', () => editarUnidade(btn.dataset.id, btn.dataset.bloco, btn.dataset.ident, btn.dataset.empresa, btn.dataset.condo));
     });
@@ -646,7 +1467,6 @@ async function carregarMedidoresAdmin(condoId) {
       ' title="Editar">✏️</button>' +
       '</div></div>'
     ).join('') || '<p class="empty-msg">Nenhum medidor neste condomínio.</p>';
-    // Bind edit buttons
     el.querySelectorAll('.btn-edit-medidor').forEach(btn => {
       btn.addEventListener('click', () => editarMedidor(btn.dataset.id, btn.dataset.tipo, btn.dataset.serie, btn.dataset.local, btn.dataset.casas, btn.dataset.condo));
     });
@@ -672,7 +1492,6 @@ async function carregarUsersAdmin() {
       ' title="Editar">✏️</button>' +
       '</div></div>'
     ).join('') || '<p class="empty-msg">Nenhum usuário.</p>';
-    // Bind edit buttons
     el.querySelectorAll('.btn-edit-user').forEach(btn => {
       btn.addEventListener('click', () => editarUsuario(btn.dataset.id, btn.dataset.nome, btn.dataset.role));
     });
@@ -686,7 +1505,7 @@ function abrirModal({ icone, titulo, msg, tipo, onConfirm }) {
   document.getElementById('modalMsg').textContent   = msg;
   const btn = document.getElementById('modalConfirm');
   btn.className   = 'btn-confirm' + (tipo === 'danger' ? ' danger' : '');
-  btn.textContent = tipo === 'danger' ? 'Sim, remover' : 'Confirmar';
+  btn.textContent = tipo === 'danger' ? 'Sim, excluir' : 'Confirmar';
   btn.onclick     = async () => { fecharModal(); await onConfirm(); };
   document.getElementById('modalBackdrop').classList.add('open');
   document.getElementById('modal').classList.add('open');
@@ -804,7 +1623,6 @@ Views.relatorio = async () => {
   try {
     const condos = await API.condominios.listar();
     sel.innerHTML = condos.map(c => '<option value="' + c.id + '">' + c.nome + '</option>').join('');
-    // Carrega unidades quando muda o condomínio
     sel.onchange = async () => {
       ['rel-unidade', 'rel-unidade-periodo'].forEach(sid => {
         const s = document.getElementById(sid);
@@ -822,16 +1640,13 @@ Views.relatorio = async () => {
         });
       } catch {}
     };
-    // Trigger para o primeiro condomínio
     if (condos.length) sel.onchange();
   } catch {}
 
-  // Define mês/ano atual como padrão
   const agora = new Date();
   document.getElementById('rel-mes').value = agora.getMonth() + 1;
   document.getElementById('rel-ano').value = agora.getFullYear();
 
-  // Define datas padrão para período (últimos 30 dias)
   const fim = agora.toISOString().split('T')[0];
   const ini = new Date(agora - 30 * 86400000).toISOString().split('T')[0];
   document.getElementById('rel-inicio').value = ini;
@@ -873,11 +1688,6 @@ async function gerarRelatorio(formato) {
   }
 
   if (formato === 'csv' || formato === 'pdf') {
-    // Download direto
-    const a = document.createElement('a');
-    a.href = url;
-    a.setAttribute('Authorization', 'Bearer ' + Auth.token);
-    // Usa fetch para manter o token
     try {
       const resp = await fetch(url, { headers: { Authorization: 'Bearer ' + Auth.token } });
       if (!resp.ok) { toast('Erro ao gerar arquivo.', 'erro'); return; }
@@ -892,7 +1702,6 @@ async function gerarRelatorio(formato) {
     return;
   }
 
-  // JSON — renderiza na tela
   const el = document.getElementById('rel-resultado');
   el.innerHTML = '<p class="loading-msg">Gerando relatório...</p>';
 
@@ -912,19 +1721,14 @@ async function gerarRelatorio(formato) {
 function renderRelatorioMensal(el, data) {
   const nomeMes = new Date(data.ano, data.mes - 1).toLocaleString('pt-BR', { month: 'long' });
   let html = '<div class="rel-header"><h3>' + nomeMes + ' ' + data.ano + ' — ' + data.condominio + '</h3></div>';
-
-  // Resumo cards
   html += '<div class="rel-resumo">' +
     relCard('Total consumido', data.resumo.consumo_total_m3.toFixed(3) + ' m³') +
     relCard('Medidores lidos', data.resumo.total_medidores_lidos) +
     relCard('Média por unidade', data.resumo.media_consumo_m3.toFixed(3) + ' m³') +
     relCard('Alertas', data.resumo.total_alertas, data.resumo.total_alertas > 0 ? 'warn' : '') +
     '</div>';
-
-  // Tabela
   html += '<div class="rel-table-wrap"><table class="rel-table">' +
     '<thead><tr><th>Unidade</th><th>Empresa</th><th>Dias</th><th>1ª Leitura</th><th>Última</th><th>Consumo m³</th><th>Var%</th></tr></thead><tbody>';
-
   data.leituras.forEach(l => {
     const alerta = l.alerta ? ' rel-alerta' : '';
     const varStr = l.variacao_pct !== null ? (l.variacao_pct >= 0 ? '+' : '') + l.variacao_pct + '%' : '—';
@@ -935,8 +1739,7 @@ function renderRelatorioMensal(el, data) {
       '<td>' + parseFloat(l.primeira_leitura).toFixed(3) + '</td>' +
       '<td>' + parseFloat(l.ultima_leitura).toFixed(3) + '</td>' +
       '<td><strong>' + parseFloat(l.consumo_m3).toFixed(3) + '</strong></td>' +
-      '<td class="' + (l.alerta ? 'text-danger' : '') + '">' + varStr + '</td>' +
-      '</tr>';
+      '<td class="' + (l.alerta ? 'text-danger' : '') + '">' + varStr + '</td></tr>';
   });
   html += '</tbody></table></div>';
   el.innerHTML = html;
@@ -946,14 +1749,11 @@ function renderRelatorioPeriodo(el, data) {
   const r = data.resumo || {};
   let html = '<div class="rel-header"><h3>Leituras — ' + data.condominio + '</h3>' +
     '<p>' + new Date(data.data_inicio).toLocaleDateString('pt-BR') + ' a ' + new Date(data.data_fim).toLocaleDateString('pt-BR') + '</p></div>';
-
   html += '<div class="rel-resumo">' +
     relCard('Total de leituras', r.total_leituras || 0) +
-    relCard('Consumo no período', (r.consumo_total_m3 || 0).toLocaleString('pt-BR', {minimumFractionDigits:3}) ) +
+    relCard('Consumo no período', (r.consumo_total_m3 || 0).toLocaleString('pt-BR', {minimumFractionDigits:3})) +
     relCard('Alertas', r.total_alertas || 0, r.total_alertas > 0 ? 'warn' : '') +
     '</div>';
-
-  // Tabela de acumulado por unidade
   if (data.acumulado && data.acumulado.length) {
     html += '<div style="margin-bottom:16px"><div class="section-title" style="padding:0 0 8px;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:1px">Acumulado por unidade</div>' +
       '<div class="rel-table-wrap"><table class="rel-table">' +
@@ -966,21 +1766,17 @@ function renderRelatorioPeriodo(el, data) {
     });
     html += '</tbody></table></div></div>';
   }
-
   html += '<div class="rel-table-wrap"><table class="rel-table">' +
     '<thead><tr><th>Unidade</th><th>Empresa</th><th>Data</th><th>Valor m³</th><th>Variação</th><th>Leitor</th><th>Foto</th></tr></thead><tbody>';
-
   data.leituras.forEach(l => {
-    const alerta   = l.alerta ? ' rel-alerta' : '';
-    const casasL   = l.casas_decimais ?? 3;
-    const dataStr  = diaSemana(l.referencia_dia, l.referencia_mes, l.referencia_ano) + ' ' +
-                     String(l.referencia_dia).padStart(2,'0') + '/' + String(l.referencia_mes).padStart(2,'0') + '/' + l.referencia_ano;
-    const varNum   = l.variacao !== null ? parseFloat(l.variacao) : null;
-    const varStr   = varNum !== null ? fmtVar(varNum, casasL) : '—';
+    const alerta  = l.alerta ? ' rel-alerta' : '';
+    const casasL  = l.casas_decimais ?? 3;
+    const dataStr = diaSemana(l.referencia_dia, l.referencia_mes, l.referencia_ano) + ' ' +
+                    String(l.referencia_dia).padStart(2,'0') + '/' + String(l.referencia_mes).padStart(2,'0') + '/' + l.referencia_ano;
+    const varNum  = l.variacao !== null ? parseFloat(l.variacao) : null;
+    const varStr  = varNum !== null ? fmtVar(varNum, casasL) : '—';
     const varStyle = l.alerta ? 'class="text-danger"' : (varNum !== null && varNum > 0 ? 'style="color:var(--ok);font-weight:600"' : '');
-    const fotoHtml = l.foto_url
-      ? '<a href="' + l.foto_url + '" target="_blank" style="color:var(--blue)">📷</a>'
-      : '—';
+    const fotoHtml = l.foto_url ? '<a href="' + l.foto_url + '" target="_blank" style="color:var(--blue)">📷</a>' : '—';
     html += '<tr class="' + alerta + '">' +
       '<td><strong>' + (l.bloco ? l.bloco + ' · ' : '') + l.unidade + '</strong></td>' +
       '<td>' + (l.empresa_snapshot || '—') + '</td>' +
@@ -988,8 +1784,7 @@ function renderRelatorioPeriodo(el, data) {
       '<td>' + fmtValor(l.valor, casasL) + '</td>' +
       '<td ' + varStyle + '>' + varStr + '</td>' +
       '<td>' + l.leitor + '</td>' +
-      '<td style="text-align:center">' + fotoHtml + '</td>' +
-      '</tr>';
+      '<td style="text-align:center">' + fotoHtml + '</td></tr>';
   });
   html += '</tbody></table></div>';
   el.innerHTML = html;
@@ -998,7 +1793,6 @@ function renderRelatorioPeriodo(el, data) {
 function renderRelatorioExtrato(el, data) {
   const nomeMes = new Date(data.ano, data.mes - 1).toLocaleString('pt-BR', { month: 'long' });
   let html = '<div class="rel-header"><h3>Extrato — ' + data.condominio + '</h3><p>' + nomeMes + ' ' + data.ano + '</p></div>';
-
   data.extratos.forEach(e => {
     const titulo = (e.bloco ? e.bloco + ' · ' : '') + e.unidade;
     html += '<div class="rel-extrato-bloco">' +
@@ -1006,40 +1800,33 @@ function renderRelatorioExtrato(el, data) {
       '<div><strong>' + titulo + '</strong>' + (e.empresa ? ' <span style="color:var(--text2);font-weight:400">— ' + e.empresa + '</span>' : '') + '</div>' +
       '<div style="font-size:12px;color:var(--text2)">Série: ' + (e.numero_serie || '—') + '</div>' +
       '</div>';
-
     html += '<div class="rel-table-wrap"><table class="rel-table">' +
       '<thead><tr><th>Data</th><th>Valor m³</th><th>Consumo dia</th><th>Leitor</th><th>Foto</th></tr></thead><tbody>';
-
     e.linhas.forEach(l => {
       if (l.sem_leitura) {
         html += '<tr style="opacity:.4"><td>' + l.data + '</td><td>' + l.dia_semana + '</td><td colspan="4" style="color:var(--text3);font-style:italic">Sem leitura</td></tr>';
       } else {
-        const consumoStr = l.consumo !== null ? (l.consumo >= 0 ? '+' : '') + l.consumo.toFixed(3) : '—';
-        const consumoCor = l.consumo > 0 ? 'style="color:var(--ok);font-weight:600"' : '';
         html += '<tr>' +
           '<td>' + l.data + '</td>' +
           '<td>' + l.dia_semana + '</td>' +
           '<td><strong>' + fmtValor(l.valor, e.casas_decimais) + '</strong></td>' +
-          '<td ' + consumoCor + '>' + (l.consumo !== null ? fmtVar(l.consumo, e.casas_decimais) : '—') + '</td>' +
+          '<td>' + (l.consumo !== null ? fmtVar(l.consumo, e.casas_decimais) : '—') + '</td>' +
           '<td>' + (l.leitor || '—') + '</td>' +
-          '<td>' + (l.tem_foto ? '<a href="' + l.foto_url + '" target="_blank" style="color:var(--blue)">📷 ver</a>' : '—') + '</td>' +
-          '</tr>';
+          '<td>' + (l.tem_foto ? '<a href="' + l.foto_url + '" target="_blank" style="color:var(--blue)">📷 ver</a>' : '—') + '</td></tr>';
       }
     });
-
     html += '</tbody><tfoot><tr style="background:var(--blue)">' +
       '<td colspan="3" style="color:white;font-weight:700;padding:8px 10px">CONSUMO TOTAL</td>' +
       '<td style="color:white;font-weight:700;font-family:var(--mono)">' + e.consumo_total.toFixed(3) + ' m³</td>' +
       '<td colspan="2" style="color:rgba(255,255,255,.6);font-size:11px">' + e.dias_lidos + ' dias lidos</td>' +
       '</tr></tfoot></table></div></div>';
   });
-
   el.innerHTML = html || '<p class="empty-msg">Nenhuma leitura no período.</p>';
 }
 
 function relCard(label, valor, tipo) {
-  const bg = tipo === 'warn' ? 'var(--warn-bg)' : 'var(--blue-xlight)';
-  const color = tipo === 'warn' ? 'var(--warn)' : 'var(--blue)';
+  const bg    = tipo === 'warn' ? 'var(--warn-bg)' : 'var(--blue-xlight)';
+  const color = tipo === 'warn' ? 'var(--warn)'    : 'var(--blue)';
   return '<div class="rel-card" style="background:' + bg + '">' +
     '<div class="rel-card-val" style="color:' + color + '">' + valor + '</div>' +
     '<div class="rel-card-label">' + label + '</div>' +
@@ -1116,10 +1903,10 @@ function editarMedidor(id, tipo, serie, local, casas, condoFiltro) {
     '<div class="field"><label>Localização</label><input id="e-m-local" value="' + (local||'') + '"></div>',
     async () => {
       await API.put('/medidores/' + id, {
-        tipo:          document.getElementById('e-m-tipo').value,
+        tipo:           document.getElementById('e-m-tipo').value,
         casas_decimais: parseInt(document.getElementById('e-m-casas').value),
-        numero_serie:  document.getElementById('e-m-serie').value,
-        localizacao:   document.getElementById('e-m-local').value,
+        numero_serie:   document.getElementById('e-m-serie').value,
+        localizacao:    document.getElementById('e-m-local').value,
       });
       toast('Medidor atualizado!', 'ok');
       carregarMedidoresAdmin(condoFiltro);
@@ -1149,30 +1936,45 @@ function editarUsuario(id, nome, role) {
 }
 
 // ── GLOBAIS ───────────────────────────────────────────
-window.Router              = Router;
-window.Auth                = Auth;
-window.switchTab           = switchTab;
-window.switchCondoTab      = switchCondoTab;
-window.toggleCondo         = toggleCondo;
-window.abrirLeitura        = abrirLeitura;
-window.mostrarLeituraExistente = mostrarLeituraExistente;
-window.iniciarEdicao       = iniciarEdicao;
-window.adicionarGestor     = adicionarGestor;
-window.removerGestor       = removerGestor;
-window.adicionarLeitor     = adicionarLeitor;
-window.removerLeitor       = removerLeitor;
-window.fecharModal         = fecharModal;
-window.voltarDeLeitura     = voltarDeLeitura;
-window.carregarUnidadesAdmin  = carregarUnidadesAdmin;
-window.toggleAccordion        = toggleAccordion;
+window.Router                   = Router;
+window.abrirHistorico            = abrirHistorico;
+window.massaGerarLinhas          = massaGerarLinhas;
+window.massaSalvar               = massaSalvar;
+window.massaFotoPreview          = massaFotoPreview;
+window._historicoSwitchAba       = _historicoSwitchAba;
+window.abrirHistoricoBtn         = abrirHistoricoBtn;
+window.voltarDeHistorico         = voltarDeHistorico;
+window.historicoIniciarEdicao    = historicoIniciarEdicao;
+window.historicoFecharEdicao     = historicoFecharEdicao;
+window.historicoSalvarEdicao     = historicoSalvarEdicao;
+window.historicoConfirmarExclusao = historicoConfirmarExclusao;
+window._historicoCarregar        = _historicoCarregar;
+window.Auth                     = Auth;
+window.switchTab                = switchTab;
+window.switchCondoTab           = switchCondoTab;
+window.toggleCondo              = toggleCondo;
+window.abrirLeitura             = abrirLeitura;
+window.mostrarLeituraExistente  = mostrarLeituraExistente;
+window.iniciarEdicao            = iniciarEdicao;
+window.confirmarExclusao        = confirmarExclusao;
+window.adicionarGestor          = adicionarGestor;
+window.removerGestor            = removerGestor;
+window.adicionarLeitor          = adicionarLeitor;
+window.removerLeitor            = removerLeitor;
+window.fecharModal              = fecharModal;
+window.voltarDeLeitura          = voltarDeLeitura;
+window.carregarUnidadesAdmin    = carregarUnidadesAdmin;
+window.carregarMedidoresAdmin   = carregarMedidoresAdmin;
+window.toggleAccordion          = toggleAccordion;
 window.alternarFiltrosRelatorio = alternarFiltrosRelatorio;
 window.gerarRelatorio           = gerarRelatorio;
-window.fecharModalEdit        = fecharModalEdit;
-window.editarCondominio       = editarCondominio;
-window.editarUnidade          = editarUnidade;
-window.editarMedidor          = editarMedidor;
-window.editarUsuario          = editarUsuario;
-window.carregarMedidoresAdmin = carregarMedidoresAdmin;
+window.fecharModalEdit          = fecharModalEdit;
+window.editarCondominio         = editarCondominio;
+window.editarUnidade            = editarUnidade;
+window.editarMedidor            = editarMedidor;
+window.editarUsuario            = editarUsuario;
+window.atualizarGraficoConsumo  = atualizarGraficoConsumo;
+window.atualizarGraficoPeriodo  = atualizarGraficoPeriodo;
 
 document.getElementById('btn-logout')?.addEventListener('click', Auth.logout);
 document.querySelectorAll('[data-page]').forEach(btn => {

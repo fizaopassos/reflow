@@ -60,6 +60,7 @@ const API = {
     buscarDia: (medidor_id) => API.get(`/leituras/dia/${medidor_id}`),
     listar:    (q)    => API.get('/leituras?' + new URLSearchParams(q).toString()),
     relatorio: (q)    => API.get('/leituras/relatorio?' + new URLSearchParams(q).toString()),
+    deletar: (id) => API.delete('/leituras/' + id),
   },
 
   // Users

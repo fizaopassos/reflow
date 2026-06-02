@@ -29,14 +29,12 @@ async function periodo(req, res) {
   const inicio = new Date(data_inicio);
   const fim    = new Date(data_fim);
 
-  // Converte datas para inteiro YYYYMMDD para comparação simples
   const toInt = (d) => d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
   const inicioInt = toInt(inicio);
   const fimInt    = toInt(fim);
 
   const { unidade_id } = req.query;
 
-  // Busca todas as leituras do condomínio e filtra em memória por data de referência
   const todasLeituras = await prisma.leitura.findMany({
     where: {
       medidor: {
@@ -73,14 +71,12 @@ async function periodo(req, res) {
     ],
   });
 
-  // Filtra pelo período usando referencia (não criado_em)
   const leituras = todasLeituras.filter(l => {
     const dataInt = l.referencia_ano * 10000 + l.referencia_mes * 100 + l.referencia_dia;
     return dataInt >= inicioInt && dataInt <= fimInt;
   });
 
-  // Calcula variação diária e alerta
-  const THRESHOLD = parseFloat(req.query.threshold || '50'); // % de variação para alerta
+  const THRESHOLD = parseFloat(req.query.threshold || '50');
   const linhas = [];
   const ultimoPorMedidor = {};
 
@@ -116,23 +112,41 @@ async function periodo(req, res) {
 
   const condo = await prisma.condominio.findUnique({ where: { id: condominio_id }, select: { nome: true } });
 
-  // Acumulado por medidor no período
+  // ── Acumulado por medidor: consumo = última leitura − primeira leitura do período ──
+  const primeiraLeituraPorMedidor = {};
+  const ultimaLeituraPorMedidor   = {};
+
+  leituras.forEach(l => {
+    const v = parseFloat(l.valor);
+    if (primeiraLeituraPorMedidor[l.medidor_id] === undefined) {
+      primeiraLeituraPorMedidor[l.medidor_id] = v;
+    }
+    ultimaLeituraPorMedidor[l.medidor_id] = v;
+  });
+
   const acumuladoPorMedidor = {};
-  linhas.forEach(l => {
+  leituras.forEach(l => {
     if (!acumuladoPorMedidor[l.medidor_id]) {
+      const casas   = l.medidor.casas_decimais ?? 3;
+      const primeira = primeiraLeituraPorMedidor[l.medidor_id];
+      const ultima   = ultimaLeituraPorMedidor[l.medidor_id];
+      const consumo  = +(ultima - primeira).toFixed(casas);
       acumuladoPorMedidor[l.medidor_id] = {
-        unidade: l.unidade, bloco: l.bloco, empresa: l.empresa_snapshot,
-        casas_decimais: l.casas_decimais, consumo: 0
+        unidade:        l.medidor.unidade.identificador,
+        bloco:          l.medidor.unidade.bloco,
+        empresa:        l.empresa_snapshot,
+        casas_decimais: casas,
+        consumo:        consumo > 0 ? consumo : 0,
       };
     }
-    if (l.variacao !== null && l.variacao > 0) {
-      acumuladoPorMedidor[l.medidor_id].consumo += l.variacao;
-    }
   });
-  const acumulado = Object.values(acumuladoPorMedidor).map(a => ({
-    ...a, consumo: +a.consumo.toFixed(a.casas_decimais)
-  })).sort((a, b) => b.consumo - a.consumo);
-  const consumoTotalPeriodo = +acumulado.reduce((s, a) => s + a.consumo, 0).toFixed(3);
+
+  const acumulado = Object.values(acumuladoPorMedidor)
+    .sort((a, b) => b.consumo - a.consumo);
+
+  const consumoTotalPeriodo = +acumulado
+    .reduce((s, a) => s + a.consumo, 0)
+    .toFixed(3);
 
   const resumo = {
     total_leituras:      linhas.length,
@@ -154,7 +168,7 @@ async function periodo(req, res) {
   res.json({ condominio: condo?.nome, data_inicio, data_fim, resumo, acumulado, leituras: linhas });
 }
 
-// ── RELATÓRIO MENSAL acumulado ────────────────────────
+// ── RELATÓRIO MENSAL ──────────────────────────────────
 async function mensal(req, res) {
   const { condominio_id, mes, ano, formato = 'json' } = req.query;
   if (!condominio_id || !mes || !ano) {
@@ -181,16 +195,15 @@ async function mensal(req, res) {
     orderBy: [{ medidor_id: 'asc' }, { referencia_dia: 'asc' }],
   });
 
-  // Agrupa por medidor e calcula acumulado (soma variações diárias)
   const porMedidor = {};
   leituras.forEach(l => {
     const mid = l.medidor_id;
     if (!porMedidor[mid]) {
       porMedidor[mid] = {
-        unidade:         l.medidor.unidade.identificador,
-        bloco:           l.medidor.unidade.bloco,
-        empresa:         l.medidor.unidade.empresa,
-        leituras_ord:    [],
+        unidade:      l.medidor.unidade.identificador,
+        bloco:        l.medidor.unidade.bloco,
+        empresa:      l.medidor.unidade.empresa,
+        leituras_ord: [],
       };
     }
     porMedidor[mid].leituras_ord.push(parseFloat(l.valor));
@@ -198,29 +211,24 @@ async function mensal(req, res) {
 
   let totalConsumo = 0;
   const linhas = Object.entries(porMedidor).map(([medidor_id, data]) => {
-    const vals = data.leituras_ord;
-    // Soma das variações diárias
-    let consumo = 0;
-    for (let i = 1; i < vals.length; i++) {
-      const diff = vals[i] - vals[i-1];
-      if (diff > 0) consumo += diff;
-    }
-    consumo = +consumo.toFixed(3);
-    totalConsumo += consumo;
-
+    const vals    = data.leituras_ord;
     const primeira = vals[0];
     const ultima   = vals[vals.length - 1];
 
-    // Variação % em relação ao mês anterior (simplificado: consumo vs média)
+    // ── Consumo = última − primeira (diferença real do medidor no mês) ──
+    const consumo = +Math.max(0, ultima - primeira).toFixed(3);
+    totalConsumo += consumo;
+
+    // Variação % para alerta: consumo relativo à primeira leitura
     const varPct = primeira > 0 ? +((consumo / primeira) * 100).toFixed(1) : null;
     const alerta = varPct !== null && varPct > THRESHOLD;
 
     return {
       medidor_id,
-      unidade:         data.unidade,
-      bloco:           data.bloco,
-      empresa:         data.empresa,
-      dias_lidos:      vals.length,
+      unidade:          data.unidade,
+      bloco:            data.bloco,
+      empresa:          data.empresa,
+      dias_lidos:       vals.length,
       primeira_leitura: primeira,
       ultima_leitura:   ultima,
       consumo_m3:       consumo,
@@ -237,24 +245,6 @@ async function mensal(req, res) {
   };
 
   const condo = await prisma.condominio.findUnique({ where: { id: condominio_id }, select: { nome: true } });
-
-  // Acumulado por medidor no período
-  const acumuladoPorMedidor = {};
-  linhas.forEach(l => {
-    if (!acumuladoPorMedidor[l.medidor_id]) {
-      acumuladoPorMedidor[l.medidor_id] = {
-        unidade: l.unidade, bloco: l.bloco, empresa: l.empresa_snapshot,
-        casas_decimais: l.casas_decimais, consumo: 0
-      };
-    }
-    if (l.variacao !== null && l.variacao > 0) {
-      acumuladoPorMedidor[l.medidor_id].consumo += l.variacao;
-    }
-  });
-  const acumulado = Object.values(acumuladoPorMedidor).map(a => ({
-    ...a, consumo: +a.consumo.toFixed(a.casas_decimais)
-  })).sort((a, b) => b.consumo - a.consumo);
-  const consumoTotalPeriodo = +acumulado.reduce((s, a) => s + a.consumo, 0).toFixed(3);
 
   if (formato === 'csv') {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -294,17 +284,17 @@ async function alertas(req, res) {
   const alertasEncontrados = [];
   Object.entries(porMedidor).forEach(([mid, data]) => {
     for (let i = 1; i < data.vals.length; i++) {
-      const diff    = data.vals[i].valor - data.vals[i-1].valor;
-      const base    = data.vals[i-1].valor;
-      const varPct  = base > 0 ? (diff / base) * 100 : 0;
+      const diff   = data.vals[i].valor - data.vals[i-1].valor;
+      const base   = data.vals[i-1].valor;
+      const varPct = base > 0 ? (diff / base) * 100 : 0;
       if (Math.abs(varPct) > THRESHOLD) {
         alertasEncontrados.push({
-          medidor_id:  mid,
-          unidade:     data.vals[i-1] && (data.unidade.bloco ? data.unidade.bloco + ' · ' : '') + data.unidade.identificador,
-          dia:         data.vals[i].dia,
-          valor_atual: data.vals[i].valor,
-          valor_ant:   data.vals[i-1].valor,
-          variacao_m3: +diff.toFixed(3),
+          medidor_id:   mid,
+          unidade:      (data.unidade.bloco ? data.unidade.bloco + ' · ' : '') + data.unidade.identificador,
+          dia:          data.vals[i].dia,
+          valor_atual:  data.vals[i].valor,
+          valor_ant:    data.vals[i-1].valor,
+          variacao_m3:  +diff.toFixed(3),
           variacao_pct: +varPct.toFixed(1),
         });
       }
@@ -314,7 +304,7 @@ async function alertas(req, res) {
   res.json({ mes, ano, threshold: THRESHOLD, alertas: alertasEncontrados });
 }
 
-// ── EXTRATO POR UNIDADE ──────────────────────────────
+// ── EXTRATO POR UNIDADE ───────────────────────────────
 async function extrato(req, res) {
   const { condominio_id, mes, ano, unidade_id, formato = 'json' } = req.query;
   if (!condominio_id || !mes || !ano) {
@@ -327,11 +317,9 @@ async function extrato(req, res) {
   const mesInt = parseInt(mes);
   const anoInt = parseInt(ano);
 
-  // Dias do mês
-  const diasNoMes = new Date(anoInt, mesInt, 0).getDate();
+  const diasNoMes  = new Date(anoInt, mesInt, 0).getDate();
   const diasSemana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
-  // Busca medidores do condomínio (filtra por unidade se informada)
   const medidores = await prisma.medidor.findMany({
     where: {
       ativo: true,
@@ -356,34 +344,34 @@ async function extrato(req, res) {
     where: { id: condominio_id }, select: { nome: true }
   });
 
-  // Monta extrato por medidor
   const extratos = medidores.map(m => {
     const leiturasMap = {};
     m.leituras.forEach(l => { leiturasMap[l.referencia_dia] = l; });
 
-    let consumoTotal = 0;
+    let consumoTotal  = 0;
     let valorAnterior = null;
     const linhas = [];
 
     for (let d = 1; d <= diasNoMes; d++) {
-      const leitura = leiturasMap[d];
-      const diaSemana = diasSemana[new Date(anoInt, mesInt - 1, d).getDay()];
-      const dataStr = String(d).padStart(2,'0') + '/' + String(mesInt).padStart(2,'0') + '/' + anoInt;
+      const leitura  = leiturasMap[d];
+      const diaSem   = diasSemana[new Date(anoInt, mesInt - 1, d).getDay()];
+      const dataStr  = String(d).padStart(2,'0') + '/' + String(mesInt).padStart(2,'0') + '/' + anoInt;
 
       if (leitura) {
-        const valor = parseFloat(leitura.valor);
-        const consumo = valorAnterior !== null ? +(valor - valorAnterior).toFixed(3) : null;
+        const valor   = parseFloat(leitura.valor);
+        // Consumo do dia = valor atual − valor anterior (diferença real)
+        const consumo = valorAnterior !== null ? +(valor - valorAnterior).toFixed(m.casas_decimais) : null;
         if (consumo !== null && consumo > 0) consumoTotal += consumo;
         valorAnterior = valor;
         linhas.push({
-          dia: d, data: dataStr, dia_semana: diaSemana,
+          dia: d, data: dataStr, dia_semana: diaSem,
           valor, consumo, leitor: leitura.user.nome,
           foto_url: leitura.foto_url, tem_foto: !!leitura.foto_url,
           sem_leitura: false,
         });
       } else {
         linhas.push({
-          dia: d, data: dataStr, dia_semana: diaSemana,
+          dia: d, data: dataStr, dia_semana: diaSem,
           valor: null, consumo: null, leitor: null,
           foto_url: null, tem_foto: false,
           sem_leitura: true,
@@ -392,15 +380,15 @@ async function extrato(req, res) {
     }
 
     return {
-      medidor_id: m.id,
-      unidade: m.unidade.identificador,
-      bloco: m.unidade.bloco,
-      empresa: m.unidade.empresa,
-      tipo: m.tipo,
-      numero_serie: m.numero_serie,
+      medidor_id:     m.id,
+      unidade:        m.unidade.identificador,
+      bloco:          m.unidade.bloco,
+      empresa:        m.unidade.empresa,
+      tipo:           m.tipo,
+      numero_serie:   m.numero_serie,
       casas_decimais: m.casas_decimais,
-      consumo_total: +consumoTotal.toFixed(m.casas_decimais),
-      dias_lidos: m.leituras.length,
+      consumo_total:  +consumoTotal.toFixed(m.casas_decimais),
+      dias_lidos:     m.leituras.length,
       linhas,
     };
   });
@@ -409,7 +397,7 @@ async function extrato(req, res) {
     const { gerarCSVExtrato } = require('../services/relatorioService');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="extrato-${mes}-${ano}.csv"`);
-    return res.send('﻿' + gerarCSVExtrato(extratos, mesInt, anoInt));
+    return res.send('\uFEFF' + gerarCSVExtrato(extratos, mesInt, anoInt));
   }
 
   if (formato === 'pdf') {
@@ -420,4 +408,125 @@ async function extrato(req, res) {
   res.json({ condominio: condo?.nome, mes: mesInt, ano: anoInt, extratos });
 }
 
-module.exports = { periodo, mensal, alertas, extrato };
+// ── DADOS PARA GRÁFICO DE CONSUMO ─────────────────────
+async function consumoGrafico(req, res) {
+  const { condominio_id, mes, ano } = req.query;
+  if (!condominio_id) return res.status(400).json({ erro: 'condominio_id é obrigatório.' });
+  if (!await verificarAcessoCondo(condominio_id, req.user)) {
+    return res.status(403).json({ erro: 'Acesso negado.' });
+  }
+
+  const mesInt = parseInt(mes || new Date().getMonth() + 1);
+  const anoInt = parseInt(ano || new Date().getFullYear());
+
+  const leituras = await prisma.leitura.findMany({
+    where: { referencia_mes: mesInt, referencia_ano: anoInt, medidor: { unidade: { condominio_id } } },
+    include: {
+      medidor: {
+        select: {
+          casas_decimais: true,
+          unidade: { select: { identificador: true, bloco: true, empresa: true } },
+        },
+      },
+    },
+    orderBy: [{ medidor_id: 'asc' }, { referencia_dia: 'asc' }],
+  });
+
+  // Consumo por unidade = última − primeira leitura do mês
+  const porUnidade = {};
+  leituras.forEach(l => {
+    const key = l.medidor_id;
+    if (!porUnidade[key]) {
+      porUnidade[key] = {
+        label:   l.medidor.unidade.empresa || l.medidor.unidade.identificador,
+        unidade: l.medidor.unidade.identificador,
+        bloco:   l.medidor.unidade.bloco,
+        casas:   l.medidor.casas_decimais,
+        primeira: parseFloat(l.valor),
+        ultima:   parseFloat(l.valor),
+      };
+    } else {
+      porUnidade[key].ultima = parseFloat(l.valor);
+    }
+  });
+
+  const dados = Object.values(porUnidade).map(u => ({
+    label:   u.label,
+    unidade: u.unidade,
+    bloco:   u.bloco,
+    consumo: +Math.max(0, u.ultima - u.primeira).toFixed(u.casas),
+  })).filter(d => d.consumo > 0).sort((a, b) => b.consumo - a.consumo);
+
+  res.json({ mes: mesInt, ano: anoInt, dados });
+}
+
+module.exports = { periodo, mensal, alertas, extrato, consumoGrafico, consumoGraficoPeriodo };
+
+// ── GRÁFICO DE CONSUMO POR PERÍODO ────────────────────
+async function consumoGraficoPeriodo(req, res) {
+  const { condominio_id, data_inicio, data_fim } = req.query;
+  if (!condominio_id || !data_inicio || !data_fim) {
+    return res.status(400).json({ erro: 'condominio_id, data_inicio e data_fim são obrigatórios.' });
+  }
+  if (!await verificarAcessoCondo(condominio_id, req.user)) {
+    return res.status(403).json({ erro: 'Acesso negado.' });
+  }
+
+  const toInt = d => d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+  const inicioInt = toInt(new Date(data_inicio));
+  const fimInt    = toInt(new Date(data_fim));
+
+  const todasLeituras = await prisma.leitura.findMany({
+    where: { medidor: { unidade: { condominio_id } } },
+    select: {
+      medidor_id: true,
+      valor: true,
+      referencia_dia: true,
+      referencia_mes: true,
+      referencia_ano: true,
+      medidor: {
+        select: {
+          casas_decimais: true,
+          unidade: { select: { identificador: true, bloco: true, empresa: true } },
+        },
+      },
+    },
+    orderBy: [
+      { medidor_id: 'asc' },
+      { referencia_ano: 'asc' },
+      { referencia_mes: 'asc' },
+      { referencia_dia: 'asc' },
+    ],
+  });
+
+  const leituras = todasLeituras.filter(l => {
+    const dataInt = l.referencia_ano * 10000 + l.referencia_mes * 100 + l.referencia_dia;
+    return dataInt >= inicioInt && dataInt <= fimInt;
+  });
+
+  // Consumo por medidor = última − primeira leitura no período
+  const porMedidor = {};
+  leituras.forEach(l => {
+    const key = l.medidor_id;
+    if (!porMedidor[key]) {
+      porMedidor[key] = {
+        label:   l.medidor.unidade.empresa || l.medidor.unidade.identificador,
+        casas:   l.medidor.casas_decimais ?? 3,
+        primeira: parseFloat(l.valor),
+        ultima:   parseFloat(l.valor),
+      };
+    } else {
+      porMedidor[key].ultima = parseFloat(l.valor);
+    }
+  });
+
+  const dados = Object.values(porMedidor)
+    .map(u => ({
+      label:   u.label,
+      consumo: +Math.max(0, u.ultima - u.primeira).toFixed(u.casas),
+    }))
+    .filter(d => d.consumo > 0)
+    .sort((a, b) => b.consumo - a.consumo);
+
+  res.json({ data_inicio, data_fim, dados });
+}

@@ -214,6 +214,7 @@ async function mensal(req, res) {
         unidade:      l.medidor.unidade.identificador,
         bloco:        l.medidor.unidade.bloco,
         empresa:      l.medidor.unidade.empresa,
+        casas:        l.medidor.casas_decimais ?? 3,
         leituras_ord: [],
       };
     }
@@ -227,7 +228,7 @@ async function mensal(req, res) {
     const ultima   = vals[vals.length - 1];
 
     // ── Consumo = última − primeira (diferença real do medidor no mês) ──
-    const consumo = +Math.max(0, ultima - primeira).toFixed(3);
+    const consumo = +Math.max(0, ultima - primeira).toFixed(data.casas);
     totalConsumo += consumo;
 
     // Variação % para alerta: consumo relativo à primeira leitura
@@ -243,6 +244,7 @@ async function mensal(req, res) {
       primeira_leitura: primeira,
       ultima_leitura:   ultima,
       consumo_m3:       consumo,
+      casas_decimais:   data.casas,
       variacao_pct:     varPct,
       alerta,
     };

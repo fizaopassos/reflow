@@ -242,7 +242,7 @@ async function atualizarGraficoConsumo() {
           legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } },
           tooltip: {
             callbacks: {
-              label: ctx => ' ' + ctx.label + ': ' + Number(ctx.parsed).toFixed(3) + ' ' + unidade,
+              label: ctx => ' ' + ctx.label + ': ' + Number(ctx.parsed).toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 3}) + ' ' + unidade,
             },
           },
         },
@@ -321,7 +321,7 @@ async function atualizarGraficoPeriodo() {
           legend: { display: false },
           tooltip: {
             callbacks: {
-              label: ctx => ' ' + Number(ctx.parsed.x).toFixed(3) + ' ' + unidade,
+              label: ctx => ' ' + Number(ctx.parsed.x).toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 3}) + ' ' + unidade,
             },
           },
         },
@@ -1861,9 +1861,9 @@ function renderRelatorioMensal(el, data) {
   const nomeMes = new Date(data.ano, data.mes - 1).toLocaleString('pt-BR', { month: 'long' });
   let html = '<div class="rel-header"><h3>' + nomeMes + ' ' + data.ano + ' — ' + data.condominio + '</h3></div>';
   html += '<div class="rel-resumo">' +
-    relCard('Total consumido', data.resumo.consumo_total_m3.toFixed(3) + ' m³') +
+    relCard('Total consumido', fmtValor(data.resumo.consumo_total_m3, 3) + ' m³') +
     relCard('Medidores lidos', data.resumo.total_medidores_lidos) +
-    relCard('Média por unidade', data.resumo.media_consumo_m3.toFixed(3) + ' m³') +
+    relCard('Média por unidade', fmtValor(data.resumo.media_consumo_m3, 3) + ' m³') +
     relCard('Alertas', data.resumo.total_alertas, data.resumo.total_alertas > 0 ? 'warn' : '') +
     '</div>';
   html += '<div class="rel-table-wrap"><table class="rel-table">' +
@@ -1875,9 +1875,9 @@ function renderRelatorioMensal(el, data) {
       '<td><strong>' + (l.bloco ? l.bloco + ' · ' : '') + l.unidade + '</strong></td>' +
       '<td>' + (l.empresa || '—') + '</td>' +
       '<td>' + l.dias_lidos + '</td>' +
-      '<td>' + parseFloat(l.primeira_leitura).toFixed(3) + '</td>' +
-      '<td>' + parseFloat(l.ultima_leitura).toFixed(3) + '</td>' +
-      '<td><strong>' + parseFloat(l.consumo_m3).toFixed(3) + '</strong></td>' +
+      '<td>' + fmtValor(l.primeira_leitura, l.casas_decimais ?? 3) + '</td>' +
+      '<td>' + fmtValor(l.ultima_leitura, l.casas_decimais ?? 3) + '</td>' +
+      '<td><strong>' + fmtValor(l.consumo_m3, l.casas_decimais ?? 3) + '</strong></td>' +
       '<td class="' + (l.alerta ? 'text-danger' : '') + '">' + varStr + '</td></tr>';
   });
   html += '</tbody></table></div>';
@@ -1890,7 +1890,7 @@ function renderRelatorioPeriodo(el, data) {
     '<p>' + new Date(data.data_inicio).toLocaleDateString('pt-BR') + ' a ' + new Date(data.data_fim).toLocaleDateString('pt-BR') + '</p></div>';
   html += '<div class="rel-resumo">' +
     relCard('Total de leituras', r.total_leituras || 0) +
-    relCard('Consumo no período', (r.consumo_total_m3 || 0).toLocaleString('pt-BR', {minimumFractionDigits:3})) +
+    relCard('Consumo no período', (r.consumo_total_m3 || 0).toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:3}))
     relCard('Alertas', r.total_alertas || 0, r.total_alertas > 0 ? 'warn' : '') +
     '</div>';
   if (data.acumulado && data.acumulado.length) {

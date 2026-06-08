@@ -1,4 +1,4 @@
 .env
 .env.example
 node_modules/
-uploads/
+uploads/gcs-credentials.json

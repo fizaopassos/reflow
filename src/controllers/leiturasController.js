@@ -3,6 +3,7 @@ const fs     = require('fs');
 const prisma = require('../utils/prisma');
 const { analisarImagem } = require('../services/geminiService');
 const { interpretarInput } = require('../utils/formatacao');
+const { uploadFoto } = require('../services/storageService');
 
 // ── ANALISAR FOTO (sem salvar) ────────────────────────
 async function analisar(req, res) {
@@ -73,13 +74,20 @@ async function registrar(req, res) {
   });
   const empresa_snapshot = medidorInfo?.unidade?.empresa || null;
 
-  let foto_url = null;
+    let foto_url = null;
   if (req.file) {
-    const uploadDir = path.join(__dirname, '../../uploads');
-    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-    const filename = `${Date.now()}-${req.file.originalname}`;
-    fs.writeFileSync(path.join(uploadDir, filename), req.file.buffer);
-    foto_url = `/uploads/${filename}`;
+    try {
+      const caminho = await uploadFoto(
+        req.file.buffer,
+        req.file.originalname,
+        req.file.mimetype
+      );
+      foto_url = caminho;
+      console.log('[GCS] Upload ok:', caminho);
+    } catch (err) {
+      console.error('[GCS] Erro no upload:', err.message);
+      return res.status(500).json({ erro: 'Falha ao salvar foto.', detalhe: err.message });
+    }
   }
 
   try {

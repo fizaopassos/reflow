@@ -61,4 +61,17 @@ router.get('/relatorios/extrato',         auth, autorizar('ADMIN','GESTOR'), rel
 router.get('/relatorios/consumo-grafico',        auth, autorizar('ADMIN','GESTOR'), relatorioCtrl.consumoGrafico);
 router.get('/relatorios/consumo-grafico-periodo', auth, autorizar('ADMIN','GESTOR'), relatorioCtrl.consumoGraficoPeriodo);
 
+// ── FOTO SIGNED URL ───────────────────────────────────
+router.get('/fotos/signed-url', auth, async (req, res) => {
+  const { caminho } = req.query;
+  if (!caminho) return res.status(400).json({ erro: 'caminho é obrigatório.' });
+  try {
+    const { gerarSignedUrl } = require('../services/storageService');
+    const url = await gerarSignedUrl(caminho);
+    res.json({ url });
+  } catch (err) {
+    res.status(500).json({ erro: 'Erro ao gerar URL.', detalhe: err.message });
+  }
+});
+
 module.exports = router;

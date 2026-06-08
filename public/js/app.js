@@ -44,6 +44,17 @@ function interpretarInput(input, casas) {
   return parseFloat(intPart + '.' + decPart);
 }
 
+async function resolverFotoUrl(fotoUrl) {
+  if (!fotoUrl) return null;
+  if (fotoUrl.startsWith('/uploads/')) return fotoUrl; // foto antiga, local
+  try {
+    const data = await API.get('/fotos/signed-url?caminho=' + encodeURIComponent(fotoUrl));
+    return data.url;
+  } catch {
+    return null;
+  }
+}
+
 // ── AUTH ──────────────────────────────────────────────
 const Auth = {
   get token()  { return localStorage.getItem('token'); },
@@ -596,9 +607,11 @@ function mostrarLeituraExistente(leitura) {
 
   if (leitura.foto_url) {
     document.getElementById('captureZone').style.display     = 'block';
-    document.getElementById('leitura-preview').src           = leitura.foto_url;
     document.getElementById('leitura-preview').style.display = 'block';
     document.getElementById('leitura-idle').style.display    = 'none';
+    resolverFotoUrl(leitura.foto_url).then(url => {
+      if (url) document.getElementById('leitura-preview').src = url;
+    });
   }
 
   document.getElementById('leitura-file').disabled           = !canEdit;
@@ -1085,7 +1098,7 @@ async function _historicoCarregar() {
       const editadoPor = l.editado_por ? ' · editado por ' + l.editado_por.nome : '';
       const metodoIcon = { GEMINI: '🤖', MANUAL: '✍️', AUTOMATICO: '⚙️' }[l.metodo] || '';
       const fotoHtml   = l.foto_url
-        ? `<a href="${l.foto_url}" target="_blank" class="hist-foto-link" title="Ver foto">📷</a>`
+        ? `<a href="#" onclick="abrirFoto('${l.foto_url}', event);return false;" class="hist-foto-link" title="Ver foto">📷</a>`
         : '';
       const obsHtml = l.observacoes
         ? `<div class="hist-obs">${l.observacoes}</div>`
@@ -1915,7 +1928,7 @@ function renderRelatorioPeriodo(el, data) {
     const varNum  = l.variacao !== null ? parseFloat(l.variacao) : null;
     const varStr  = varNum !== null ? fmtVar(varNum, casasL) : '—';
     const varStyle = l.alerta ? 'class="text-danger"' : (varNum !== null && varNum > 0 ? 'style="color:var(--ok);font-weight:600"' : '');
-    const fotoHtml = l.foto_url ? '<a href="' + l.foto_url + '" target="_blank" style="color:var(--blue)">📷</a>' : '—';
+    const fotoHtml = l.foto_url ? '<a href="#" onclick="abrirFoto(\'' + l.foto_url + '\', event);return false;" style="color:var(--blue)">📷</a>' : '—';
     html += '<tr class="' + alerta + '">' +
       '<td><strong>' + (l.bloco ? l.bloco + ' · ' : '') + l.unidade + '</strong></td>' +
       '<td>' + (l.empresa_snapshot || '—') + '</td>' +
@@ -1951,12 +1964,12 @@ function renderRelatorioExtrato(el, data) {
           '<td><strong>' + fmtValor(l.valor, e.casas_decimais) + '</strong></td>' +
           '<td>' + (l.consumo !== null ? fmtVar(l.consumo, e.casas_decimais) : '—') + '</td>' +
           '<td>' + (l.leitor || '—') + '</td>' +
-          '<td>' + (l.tem_foto ? '<a href="' + l.foto_url + '" target="_blank" style="color:var(--blue)">📷 ver</a>' : '—') + '</td></tr>';
+          '<td>' + (l.tem_foto ? '<a href="#" onclick="abrirFoto(\'' + l.foto_url + '\', event);return false;" style="color:var(--blue)">📷 ver</a>' : '—') + '</td>'
       }
     });
     html += '</tbody><tfoot><tr style="background:var(--blue)">' +
       '<td colspan="3" style="color:white;font-weight:700;padding:8px 10px">CONSUMO TOTAL</td>' +
-      '<td style="color:white;font-weight:700;font-family:var(--mono)">' + e.consumo_total.toFixed(3) + ' m³</td>' +
+      '<td style="color:white;font-weight:700;font-family:var(--mono)">' + fmtValor(e.consumo_total, e.casas_decimais ?? 3) + ' m³</td>' +
       '<td colspan="2" style="color:rgba(255,255,255,.6);font-size:11px">' + e.dias_lidos + ' dias lidos</td>' +
       '</tr></tfoot></table></div></div>';
   });
@@ -2074,6 +2087,12 @@ function editarUsuario(id, nome, role) {
   );
 }
 
+async function abrirFoto(fotoUrl, event) {
+  if (event) event.preventDefault();
+  const url = await resolverFotoUrl(fotoUrl);
+  if (url) window.open(url, '_blank');
+}
+
 // ── GLOBAIS ───────────────────────────────────────────
 window.Router                   = Router;
 window.abrirHistorico            = abrirHistorico;
@@ -2115,6 +2134,7 @@ window.editarUsuario            = editarUsuario;
 window.atualizarGraficoConsumo  = atualizarGraficoConsumo;
 window.atualizarGraficoPeriodo  = atualizarGraficoPeriodo;
 window.irRelatorio              = function(tipo) { Router.go('relatorio'); setTimeout(() => { const sel = document.getElementById('rel-tipo'); if (sel) { sel.value = tipo; alternarFiltrosRelatorio(); } }, 100); };
+window.abrirFoto = abrirFoto;
 
 document.getElementById('btn-logout')?.addEventListener('click', Auth.logout);
 document.querySelectorAll('[data-page]').forEach(btn => {

@@ -1327,20 +1327,12 @@ input::placeholder { color: var(--text3); }
 
   /* ── DASHBOARD GRID ───────────────────────────── */
 
-  /* Linha 1: summary + pendentes */
+  /* Linha 1: painel de pendentes */
   .dash-top-row {
     display: flex !important;
-    gap: 20px;
+    justify-content: flex-end;
     padding: 0 32px;
     margin-bottom: 20px;
-    align-items: flex-start;
-  }
-
-  .dash-summary {
-    display: grid !important;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 14px;
-    flex: 1;
   }
 
   .dash-summary-card {
@@ -1546,3 +1538,110 @@ input::placeholder { color: var(--text3); }
 }
 .dash-summary-card.warn .val { color: var(--warn); }
 .dash-summary-card.ok .val   { color: var(--ok); }
+
+/* ── PERFIL LEITOR ───────────────────────────────── */
+.leitor-prog-texto {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.leitor-prog-num {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--blue);
+  font-family: var(--mono);
+}
+
+/* Cards de medidor para leitor */
+.leitor-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: all .15s;
+  box-shadow: var(--shadow-sm);
+}
+.leitor-card:active { transform: scale(.98); }
+
+.leitor-card-pend {
+  border-left: 4px solid var(--warn);
+}
+.leitor-card-lido {
+  border-left: 4px solid var(--ok);
+  opacity: .75;
+}
+.leitor-card-lido:active { opacity: .9; }
+
+.leitor-card-icon {
+  font-size: 22px;
+  flex-shrink: 0;
+  width: 32px;
+  text-align: center;
+}
+.leitor-card-info {
+  flex: 1;
+  min-width: 0;
+}
+.leitor-card-titulo {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.leitor-card-empresa {
+  font-size: 12px;
+  color: var(--text3);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.leitor-card-meta {
+  font-size: 12px;
+  color: var(--text2);
+  margin-top: 4px;
+}
+.leitor-card-status {
+  flex-shrink: 0;
+}
+
+/* Navbar mínima do leitor */
+.leitor-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.leitor-nav-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text3);
+  font-size: 11px;
+  font-family: var(--sans);
+  padding: 8px 24px;
+  border-radius: 8px;
+  transition: color .15s;
+}
+.leitor-nav-btn:active { color: var(--danger); }
+.leitor-nav-btn svg { color: var(--text3); }
+

@@ -68,9 +68,8 @@
       <div id="dash-progresso-mobile"></div>
     </div>
 
-    <!-- ── LINHA 1: Summary cards + Pendentes ── -->
+    <!-- ── LINHA 1: Pendentes ── -->
     <div class="dash-top-row">
-      <div class="dash-summary" id="dash-summary"></div>
       <div class="dash-panel dash-pendentes-card" id="dash-pendentes-wrap">
         <div class="dash-panel-title">Pendentes hoje</div>
         <div id="dash-pendentes"></div>
@@ -111,7 +110,15 @@
     <div class="dash-grid dash-grid-2col" id="dash-grid-graficos">
       <!-- Gráfico de período -->
       <div class="dash-panel" id="dash-periodo-painel" style="display:none">
-        <div class="dash-panel-title" style="margin-bottom:10px">Consumo por período</div>
+        <div class="dash-panel-title" style="margin-bottom:10px">
+          Consumo por período
+          <select id="dash-periodo-tipo" onchange="atualizarGraficoPeriodo()" style="font-size:11px;padding:3px 6px;width:auto;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text2);font-weight:400;text-transform:none;letter-spacing:0">
+            <option value="">💧⚡🔥 Todos</option>
+            <option value="AGUA">💧 Água</option>
+            <option value="ENERGIA">⚡ Energia</option>
+            <option value="GAS">🔥 Gás</option>
+          </select>
+        </div>
         <div id="dash-periodo-condo-wrap"></div>
         <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
           <div class="field" style="flex:1;min-width:110px;margin-bottom:0">
@@ -136,7 +143,15 @@
       <div class="dash-panel">
         <div class="dash-panel-title">
           Consumo por empresa
-          <select id="dash-grafico-mes" onchange="atualizarGraficoConsumo()"></select>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select id="dash-grafico-tipo" onchange="atualizarGraficoConsumo()" style="font-size:11px;padding:3px 6px;width:auto;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text2)">
+              <option value="">💧⚡🔥 Todos</option>
+              <option value="AGUA">💧 Água</option>
+              <option value="ENERGIA">⚡ Energia</option>
+              <option value="GAS">🔥 Gás</option>
+            </select>
+            <select id="dash-grafico-mes" onchange="atualizarGraficoConsumo()"></select>
+          </div>
         </div>
         <canvas id="grafico-consumo" height="220"></canvas>
         <div id="dash-grafico-condo" style="display:none"></div>
@@ -167,6 +182,39 @@
 
     <!-- Mobile: cards normais -->
     <div id="dashboard-cards" class="cards-grid"></div>
+  </div>
+
+
+  <!-- ── LEITOR ─────────────────────────────────────── -->
+  <div class="view" id="view-leitor">
+    <!-- Topbar simples do leitor -->
+    <div class="topbar" style="position:sticky;top:0;z-index:10">
+      <div class="topbar-inner">
+        <img src="/logo.png" alt="Retha" class="logo">
+        <span class="topbar-greeting" id="leitor-nome"></span>
+      </div>
+      <div class="topbar-title">Reflow</div>
+      <div class="topbar-sub">Leituras de hoje</div>
+    </div>
+
+    <!-- Progresso no topo -->
+    <div style="padding:16px 16px 8px">
+      <div id="leitor-progresso"></div>
+    </div>
+
+    <!-- Lista de medidores -->
+    <div id="leitor-lista" style="padding:0 16px 100px"></div>
+
+    <!-- Navbar mínima: só Sair -->
+    <nav class="leitor-nav">
+      <button onclick="Auth.logout()" class="leitor-nav-btn">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M8 10h7m0 0l-2.5-2.5M15 10l-2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M12 4H5a1 1 0 00-1 1v10a1 1 0 001 1h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span>Sair</span>
+      </button>
+    </nav>
   </div>
 
   <!-- ── MEDIÇÕES ────────────────────────────────────── -->

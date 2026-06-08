@@ -72,7 +72,15 @@ const Router = {
   params: {},
   go(page, params = {}) {
     if (!Auth.isLogged() && page !== 'login') { Router.go('login'); return; }
-    if (Auth.isLogged() && page === 'login')  { Router.go('dashboard'); return; }
+    if (Auth.isLogged() && page === 'login') {
+      Router.go(Auth.is('LEITOR') ? 'leitor' : 'dashboard');
+      return;
+    }
+    // LEITOR só pode acessar leitor e leitura
+    if (Auth.is('LEITOR') && !['leitor','leitura'].includes(page)) {
+      Router.go('leitor');
+      return;
+    }
     Router.prev       = Router.current;
     Router.prevParams = Router.params;
     Router.current    = page;
@@ -86,6 +94,10 @@ const Router = {
 };
 
 function voltarDeLeitura() {
+  if (Auth.is('LEITOR')) {
+    Router.go('leitor');
+    return;
+  }
   if (Router.prev === 'medicoes' && Router.prevParams?.condominio_id) {
     Router.go('medicoes', Router.prevParams);
   } else {
@@ -117,6 +129,13 @@ const Navbar = {
       btn.classList.toggle('active', btn.dataset.page === Router.current);
     });
 
+    // LEITOR: oculta toda a navbar padrão, mostra navbar própria
+    if (Auth.is('LEITOR')) {
+      nav.style.display = 'none';
+      nav.classList.add('nav-hidden');
+      return;
+    }
+
     document.getElementById('nav-admin').style.display     = Auth.canAdmin()  ? 'flex' : 'none';
     document.getElementById('nav-relatorio').style.display = Auth.canManage() ? 'flex' : 'none';
     const navHist = document.getElementById('nav-historico');
@@ -141,7 +160,11 @@ document.getElementById('form-login')?.addEventListener('submit', async e => {
       document.getElementById('login-senha').value
     );
     localStorage.setItem('token', res.token);
-    Router.go('dashboard');
+    if (res.role === 'LEITOR' || JSON.parse(atob(res.token.split('.')[1]))?.role === 'LEITOR') {
+      Router.go('leitor');
+    } else {
+      Router.go('dashboard');
+    }
   } catch (err) {
     toast(err.message, 'erro');
   } finally {
@@ -182,11 +205,17 @@ async function atualizarGraficoConsumo() {
   if (condoSelEl) condoId = condoSelEl.value;
   if (!condoId) return;
 
+  const tipoSel = document.getElementById('dash-grafico-tipo');
+  const tipo    = tipoSel?.value || '';
+
   const canvas = document.getElementById('grafico-consumo');
   if (!canvas) return;
 
   try {
-    const data = await API.get('/relatorios/consumo-grafico?condominio_id=' + condoId + '&mes=' + mes + '&ano=' + ano);
+    let url = '/relatorios/consumo-grafico?condominio_id=' + condoId + '&mes=' + mes + '&ano=' + ano;
+    if (tipo) url += '&tipo=' + tipo;
+
+    const data = await API.get(url);
     if (_dashChart) { _dashChart.destroy(); _dashChart = null; }
 
     if (!data.dados || !data.dados.length) {
@@ -195,6 +224,7 @@ async function atualizarGraficoConsumo() {
     }
     canvas.style.display = '';
 
+    const unidade = data.unidade_medida || 'm³';
     const CORES = ['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#ec4899','#14b8a6','#a855f7','#f97316','#84cc16'];
     _dashChart = new Chart(canvas, {
       type: 'doughnut',
@@ -212,7 +242,7 @@ async function atualizarGraficoConsumo() {
           legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } },
           tooltip: {
             callbacks: {
-              label: ctx => ' ' + ctx.label + ': ' + Number(ctx.parsed).toFixed(3) + ' m³',
+              label: ctx => ' ' + ctx.label + ': ' + Number(ctx.parsed).toFixed(3) + ' ' + unidade,
             },
           },
         },
@@ -236,6 +266,9 @@ async function atualizarGraficoPeriodo() {
   if (sel?.value) condoId = sel.value;
   if (!condoId) return;
 
+  const tipoSel = document.getElementById('dash-periodo-tipo');
+  const tipo    = tipoSel?.value || '';
+
   const canvas = document.getElementById('grafico-periodo');
   const msgEl  = document.getElementById('grafico-periodo-msg');
   if (!canvas) return;
@@ -244,10 +277,11 @@ async function atualizarGraficoPeriodo() {
   canvas.style.display = 'none';
 
   try {
-    const data = await API.get(
-      '/relatorios/consumo-grafico-periodo?condominio_id=' + condoId +
-      '&data_inicio=' + ini + '&data_fim=' + fim
-    );
+    let url = '/relatorios/consumo-grafico-periodo?condominio_id=' + condoId +
+              '&data_inicio=' + ini + '&data_fim=' + fim;
+    if (tipo) url += '&tipo=' + tipo;
+
+    const data = await API.get(url);
 
     if (_dashChartPeriodo) { _dashChartPeriodo.destroy(); _dashChartPeriodo = null; }
 
@@ -259,7 +293,7 @@ async function atualizarGraficoPeriodo() {
     if (msgEl) msgEl.textContent = '';
     canvas.style.display = '';
 
-    // Calcula altura dinâmica: mínimo 160px, 32px por barra
+    const unidade = data.unidade_medida || 'm³';
     const altura = Math.max(160, data.dados.length * 38);
     canvas.style.height = altura + 'px';
     canvas.height = altura;
@@ -271,7 +305,7 @@ async function atualizarGraficoPeriodo() {
       data: {
         labels: data.dados.map(d => d.label),
         datasets: [{
-          label: 'Consumo m³',
+          label: 'Consumo ' + unidade,
           data: data.dados.map(d => d.consumo),
           backgroundColor: data.dados.map((_, i) => CORES[i % CORES.length] + 'cc'),
           borderColor:     data.dados.map((_, i) => CORES[i % CORES.length]),
@@ -287,7 +321,7 @@ async function atualizarGraficoPeriodo() {
           legend: { display: false },
           tooltip: {
             callbacks: {
-              label: ctx => ' ' + Number(ctx.parsed.x).toFixed(3) + ' m³',
+              label: ctx => ' ' + Number(ctx.parsed.x).toFixed(3) + ' ' + unidade,
             },
           },
         },
@@ -335,18 +369,6 @@ Views.dashboard = async () => {
     if (!data.condominios.length) {
       elProg.innerHTML = '<p class="empty-msg">Nenhum condomínio disponível.</p>';
       return;
-    }
-
-    const totalMedidores = data.condominios.reduce((s, c) => s + c.total_medidores, 0);
-    const totalLidos     = data.condominios.reduce((s, c) => s + c.lidos, 0);
-    const totalPendentes = data.condominios.reduce((s, c) => s + c.pendentes, 0);
-    const elSum = document.getElementById('dash-summary');
-    if (elSum) {
-      const pctGeral = totalMedidores > 0 ? Math.round(totalLidos / totalMedidores * 100) : 0;
-      elSum.innerHTML =
-        '<div class="dash-summary-card' + (pctGeral === 100 ? ' ok' : '') + '"><span class="val">' + totalLidos + '</span><span class="lbl">Lidos hoje</span></div>' +
-        '<div class="dash-summary-card' + (totalPendentes > 0 ? ' warn' : ' ok') + '"><span class="val">' + totalPendentes + '</span><span class="lbl">Pendentes</span></div>' +
-        '<div class="dash-summary-card"><span class="val">' + totalMedidores + '</span><span class="lbl">Total medidores</span></div>';
     }
 
     const _renderCondo = c => {
@@ -778,6 +800,123 @@ async function _iniciarGraficoPeriodo() {
 
   await atualizarGraficoPeriodo();
 }
+
+
+// ── VIEW LEITOR ───────────────────────────────────────
+Views.leitor = async () => {
+  if (!Auth.is('LEITOR')) { Router.go('dashboard'); return; }
+
+  const user = Auth.user;
+  const agora = new Date();
+  const diaHoje = agora.getDate();
+  const mesHoje = agora.getMonth() + 1;
+  const anoHoje = agora.getFullYear();
+
+  // Atualiza nome no topbar leitor
+  const nomeEl = document.getElementById('leitor-nome');
+  if (nomeEl) nomeEl.textContent = user?.nome || '';
+
+  const progressoEl = document.getElementById('leitor-progresso');
+  const listaEl     = document.getElementById('leitor-lista');
+  if (!listaEl) return;
+
+  listaEl.innerHTML = '<p class="loading-msg">Carregando...</p>';
+
+  try {
+    // Busca condomínios do leitor via dashboard
+    const data = await API.dashboard();
+    if (!data.condominios.length) {
+      listaEl.innerHTML = '<p class="empty-msg">Nenhum condomínio vinculado.</p>';
+      return;
+    }
+
+    // Se tiver só um condomínio, usa direto; se tiver mais, pega o primeiro
+    const condo = data.condominios[0];
+    window._leitorCondoId   = condo.id;
+    window._leitorCondoNome = condo.nome;
+
+    // Busca medidores e leituras do mês
+    const [medidores, leituras] = await Promise.all([
+      API.get('/medidores?condominio_id=' + condo.id),
+      API.leituras.listar({ condominio_id: condo.id, mes: mesHoje, ano: anoHoje }),
+    ]);
+
+    // Mapa de leituras de hoje
+    const leitosHoje = new Set();
+    leituras.forEach(l => {
+      if (l.referencia_dia === diaHoje && l.referencia_mes === mesHoje && l.referencia_ano === anoHoje) {
+        leitosHoje.add(l.medidor_id);
+      }
+    });
+
+    const total   = medidores.length;
+    const lidos   = leitosHoje.size;
+    const pct     = total > 0 ? Math.round(lidos / total * 100) : 0;
+
+    // Progresso no topo
+    if (progressoEl) {
+      progressoEl.innerHTML =
+        '<div class="leitor-prog-texto">' +
+          '<span class="leitor-prog-num">' + lidos + ' de ' + total + '</span>' +
+          ' lidos hoje' +
+        '</div>' +
+        '<div class="progress-bar" style="margin-top:8px">' +
+          '<div class="progress-fill" style="width:' + pct + '%;background:' + (pct === 100 ? 'var(--ok)' : 'var(--blue)') + '"></div>' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--text3);margin-top:4px;text-align:right">' + pct + '%</div>';
+    }
+
+    // Ordena: pendentes primeiro, depois lidos
+    const pendentes = medidores.filter(m => !leitosHoje.has(m.id));
+    const lidosList = medidores.filter(m =>  leitosHoje.has(m.id));
+    const ordenados = [...pendentes, ...lidosList];
+
+    // Mapa de última leitura por medidor
+    const ultimaLeitura = {};
+    leituras.forEach(l => {
+      const atual = ultimaLeitura[l.medidor_id];
+      if (!atual || new Date(l.criado_em) > new Date(atual.criado_em)) {
+        ultimaLeitura[l.medidor_id] = l;
+      }
+    });
+
+    window._medidoresData = {};
+    ordenados.forEach(m => {
+      window._medidoresData[m.id] = {
+        unidade: (m.unidade?.bloco ? m.unidade.bloco + ' · ' : '') + (m.unidade?.identificador || ''),
+        empresa: m.unidade?.empresa || '',
+      };
+    });
+
+    listaEl.innerHTML = ordenados.map(m => {
+      const lido      = leitosHoje.has(m.id);
+      const tipoIcon  = { AGUA: '💧', ENERGIA: '⚡', GAS: '🔥' }[m.tipo] || '📊';
+      const casas     = m.casas_decimais ?? 3;
+      const titulo    = (m.unidade?.bloco ? m.unidade.bloco + ' · ' : '') + (m.unidade?.identificador || '—');
+      const empresa   = m.unidade?.empresa || '';
+      const ultima    = ultimaLeitura[m.id];
+      const ultimaStr = ultima
+        ? 'Última: ' + parseFloat(ultima.valor).toLocaleString('pt-BR', {minimumFractionDigits: casas, maximumFractionDigits: casas})
+        : 'Sem leituras';
+
+      return '<div class="leitor-card' + (lido ? ' leitor-card-lido' : ' leitor-card-pend') + '" ' +
+        'onclick="abrirLeitura(&quot;' + m.id + '&quot;,&quot;' + condo.id + '&quot;,&quot;' + condo.nome.replace(/"/g,'') + '&quot;)">' +
+        '<div class="leitor-card-icon">' + (lido ? '✅' : '⏳') + '</div>' +
+        '<div class="leitor-card-info">' +
+          '<div class="leitor-card-titulo">' + tipoIcon + ' ' + titulo + '</div>' +
+          (empresa ? '<div class="leitor-card-empresa">' + empresa + '</div>' : '') +
+          '<div class="leitor-card-meta">' + ultimaStr + '</div>' +
+        '</div>' +
+        '<div class="leitor-card-status">' +
+          (lido ? '<span class="badge badge-ok">✓ Lido</span>' : '<span class="badge badge-pend">Pendente</span>') +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+  } catch (err) {
+    listaEl.innerHTML = '<p class="error-msg">' + err.message + '</p>';
+  }
+};
 
 // ── HISTÓRICO DE LEITURAS ─────────────────────────────
 Views.historico = async ({ medidor_id, medidor_label, condominio_id, condominio_nome } = {}) => {
@@ -1975,10 +2114,15 @@ window.editarMedidor            = editarMedidor;
 window.editarUsuario            = editarUsuario;
 window.atualizarGraficoConsumo  = atualizarGraficoConsumo;
 window.atualizarGraficoPeriodo  = atualizarGraficoPeriodo;
+window.irRelatorio              = function(tipo) { Router.go('relatorio'); setTimeout(() => { const sel = document.getElementById('rel-tipo'); if (sel) { sel.value = tipo; alternarFiltrosRelatorio(); } }, 100); };
 
 document.getElementById('btn-logout')?.addEventListener('click', Auth.logout);
 document.querySelectorAll('[data-page]').forEach(btn => {
   btn.addEventListener('click', () => Router.go(btn.dataset.page));
 });
 
-Router.go(Auth.isLogged() ? 'dashboard' : 'login');
+if (Auth.isLogged()) {
+  Router.go(Auth.is('LEITOR') ? 'leitor' : 'dashboard');
+} else {
+  Router.go('login');
+}

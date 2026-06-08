@@ -1,5 +1,6 @@
 const prisma = require('../utils/prisma');
 const { gerarCSVPeriodo, gerarCSVMensal, gerarPDFPeriodo, gerarPDFMensal } = require('../services/relatorioService');
+const { gerarGraficoBarras } = require('../services/graficoService');
 
 // ── VALIDAÇÃO DE ACESSO ──────────────────────────────
 async function verificarAcessoCondo(condoId, user) {
@@ -162,7 +163,17 @@ async function periodo(req, res) {
   }
 
   if (formato === 'pdf') {
-    return gerarPDFPeriodo(linhas, { condominio: condo?.nome || '', dataInicio: inicio, dataFim: fim }, res, acumulado, resumo);
+    // Gera gráfico de barras automaticamente para embutir no PDF
+    let graficoBuffer = null;
+    if (acumulado && acumulado.length > 0) {
+      try {
+        const dadosGrafico = acumulado.map(a => ({ label: a.empresa || a.unidade, consumo: a.consumo }));
+        graficoBuffer = await gerarGraficoBarras(dadosGrafico, 'm³', 'Consumo por unidade no período');
+      } catch (e) {
+        console.warn('[PDF] Não foi possível gerar gráfico:', e.message);
+      }
+    }
+    return gerarPDFPeriodo(linhas, { condominio: condo?.nome || '', dataInicio: inicio, dataFim: fim }, res, acumulado, resumo, graficoBuffer);
   }
 
   res.json({ condominio: condo?.nome, data_inicio, data_fim, resumo, acumulado, leituras: linhas });
@@ -410,7 +421,7 @@ async function extrato(req, res) {
 
 // ── DADOS PARA GRÁFICO DE CONSUMO ─────────────────────
 async function consumoGrafico(req, res) {
-  const { condominio_id, mes, ano } = req.query;
+  const { condominio_id, mes, ano, tipo } = req.query;
   if (!condominio_id) return res.status(400).json({ erro: 'condominio_id é obrigatório.' });
   if (!await verificarAcessoCondo(condominio_id, req.user)) {
     return res.status(403).json({ erro: 'Acesso negado.' });
@@ -419,11 +430,16 @@ async function consumoGrafico(req, res) {
   const mesInt = parseInt(mes || new Date().getMonth() + 1);
   const anoInt = parseInt(ano || new Date().getFullYear());
 
+  // Filtro de tipo opcional (AGUA, ENERGIA, GAS)
+  const wheremedidor = { unidade: { condominio_id } };
+  if (tipo && ['AGUA','ENERGIA','GAS'].includes(tipo)) wheremedidor.tipo = tipo;
+
   const leituras = await prisma.leitura.findMany({
-    where: { referencia_mes: mesInt, referencia_ano: anoInt, medidor: { unidade: { condominio_id } } },
+    where: { referencia_mes: mesInt, referencia_ano: anoInt, medidor: wheremedidor },
     include: {
       medidor: {
         select: {
+          tipo: true,
           casas_decimais: true,
           unidade: { select: { identificador: true, bloco: true, empresa: true } },
         },
@@ -432,16 +448,16 @@ async function consumoGrafico(req, res) {
     orderBy: [{ medidor_id: 'asc' }, { referencia_dia: 'asc' }],
   });
 
-  // Consumo por unidade = última − primeira leitura do mês
   const porUnidade = {};
   leituras.forEach(l => {
     const key = l.medidor_id;
     if (!porUnidade[key]) {
       porUnidade[key] = {
-        label:   l.medidor.unidade.empresa || l.medidor.unidade.identificador,
-        unidade: l.medidor.unidade.identificador,
-        bloco:   l.medidor.unidade.bloco,
-        casas:   l.medidor.casas_decimais,
+        label:    l.medidor.unidade.empresa || l.medidor.unidade.identificador,
+        unidade:  l.medidor.unidade.identificador,
+        bloco:    l.medidor.unidade.bloco,
+        tipo:     l.medidor.tipo,
+        casas:    l.medidor.casas_decimais,
         primeira: parseFloat(l.valor),
         ultima:   parseFloat(l.valor),
       };
@@ -454,17 +470,21 @@ async function consumoGrafico(req, res) {
     label:   u.label,
     unidade: u.unidade,
     bloco:   u.bloco,
+    tipo:    u.tipo,
     consumo: +Math.max(0, u.ultima - u.primeira).toFixed(u.casas),
   })).filter(d => d.consumo > 0).sort((a, b) => b.consumo - a.consumo);
 
-  res.json({ mes: mesInt, ano: anoInt, dados });
+  // Unidade de medida predominante no resultado
+  const unidadeMedida = tipo === 'ENERGIA' ? 'kWh' : tipo === 'GAS' ? 'm³' : 'm³';
+
+  res.json({ mes: mesInt, ano: anoInt, tipo: tipo || 'TODOS', unidade_medida: unidadeMedida, dados });
 }
 
 module.exports = { periodo, mensal, alertas, extrato, consumoGrafico, consumoGraficoPeriodo };
 
 // ── GRÁFICO DE CONSUMO POR PERÍODO ────────────────────
 async function consumoGraficoPeriodo(req, res) {
-  const { condominio_id, data_inicio, data_fim } = req.query;
+  const { condominio_id, data_inicio, data_fim, tipo } = req.query;
   if (!condominio_id || !data_inicio || !data_fim) {
     return res.status(400).json({ erro: 'condominio_id, data_inicio e data_fim são obrigatórios.' });
   }
@@ -476,8 +496,12 @@ async function consumoGraficoPeriodo(req, res) {
   const inicioInt = toInt(new Date(data_inicio));
   const fimInt    = toInt(new Date(data_fim));
 
+  // Filtro de tipo opcional
+  const wheremedidor = { unidade: { condominio_id } };
+  if (tipo && ['AGUA','ENERGIA','GAS'].includes(tipo)) wheremedidor.tipo = tipo;
+
   const todasLeituras = await prisma.leitura.findMany({
-    where: { medidor: { unidade: { condominio_id } } },
+    where: { medidor: wheremedidor },
     select: {
       medidor_id: true,
       valor: true,
@@ -486,6 +510,7 @@ async function consumoGraficoPeriodo(req, res) {
       referencia_ano: true,
       medidor: {
         select: {
+          tipo: true,
           casas_decimais: true,
           unidade: { select: { identificador: true, bloco: true, empresa: true } },
         },
@@ -504,14 +529,14 @@ async function consumoGraficoPeriodo(req, res) {
     return dataInt >= inicioInt && dataInt <= fimInt;
   });
 
-  // Consumo por medidor = última − primeira leitura no período
   const porMedidor = {};
   leituras.forEach(l => {
     const key = l.medidor_id;
     if (!porMedidor[key]) {
       porMedidor[key] = {
-        label:   l.medidor.unidade.empresa || l.medidor.unidade.identificador,
-        casas:   l.medidor.casas_decimais ?? 3,
+        label:    l.medidor.unidade.empresa || l.medidor.unidade.identificador,
+        tipo:     l.medidor.tipo,
+        casas:    l.medidor.casas_decimais ?? 3,
         primeira: parseFloat(l.valor),
         ultima:   parseFloat(l.valor),
       };
@@ -523,10 +548,13 @@ async function consumoGraficoPeriodo(req, res) {
   const dados = Object.values(porMedidor)
     .map(u => ({
       label:   u.label,
+      tipo:    u.tipo,
       consumo: +Math.max(0, u.ultima - u.primeira).toFixed(u.casas),
     }))
     .filter(d => d.consumo > 0)
     .sort((a, b) => b.consumo - a.consumo);
 
-  res.json({ data_inicio, data_fim, dados });
+  const unidadeMedida = tipo === 'ENERGIA' ? 'kWh' : 'm³';
+
+  res.json({ data_inicio, data_fim, tipo: tipo || 'TODOS', unidade_medida: unidadeMedida, dados });
 }

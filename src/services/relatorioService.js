@@ -55,8 +55,8 @@ function gerarCSVMensal(linhas, mes, ano) {
   return [header, ...rows].map(r => r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(',')).join('\n');
 }
 
-// ── GERAR PDF ─────────────────────────────────────────
-function gerarPDFPeriodo(leituras, { condominio, dataInicio, dataFim }, res, acumulado, resumo) {
+// ── GERAR PDF PERÍODO ─────────────────────────────────
+function gerarPDFPeriodo(leituras, { condominio, dataInicio, dataFim }, res, acumulado, resumo, graficoBuffer = null) {
   const doc = new PDFDocument({ margin: 40, size: 'A4' });
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="leituras-periodo.pdf"`);
@@ -96,6 +96,24 @@ function gerarPDFPeriodo(leituras, { condominio, dataInicio, dataFim }, res, acu
       ], i % 2 === 0, null);
     });
     doc.moveDown(1);
+  }
+
+  // ── Gráfico de consumo (se disponível) ──
+  if (graficoBuffer) {
+    try {
+      if (doc.y > 420) doc.addPage();
+      doc.moveDown(0.5);
+      doc.fontSize(10).font('Helvetica-Bold').fillColor('#254086').text('Gráfico de consumo por unidade');
+      doc.moveDown(0.3);
+      const imgWidth  = 515;
+      const imgHeight = Math.round(imgWidth * 0.38);
+      if (doc.y + imgHeight > 780) doc.addPage();
+      doc.image(graficoBuffer, 40, doc.y, { width: imgWidth });
+      doc.y += imgHeight + 12;
+      doc.moveDown(0.5);
+    } catch (e) {
+      // Silencia erro de imagem para não quebrar o PDF
+    }
   }
 
   // Tabela leituras diárias
@@ -141,7 +159,6 @@ function gerarPDFMensal(linhas, resumo, { condominio, mes, ano }, res) {
 
   _cabecalho(doc, 'Relatório Acumulado Mensal', condominio, `${nomeMes} de ${ano}`);
 
-  // Resumo box
   doc.roundedRect(40, doc.y, 515, 50, 4).fillAndStroke('#f0f4ff', '#c4cde8');
   const ry = doc.y - 46;
   doc.fillColor('#254086').fontSize(9).font('Helvetica-Bold');
@@ -154,7 +171,6 @@ function gerarPDFMensal(linhas, resumo, { condominio, mes, ano }, res) {
   doc.text(fmtValor(resumo.media_consumo_m3) + ' m³', 345, ry + 22);
   doc.moveDown(2.5);
 
-  // Tabela
   const cols = [140, 70, 90, 70, 70, 75];
   const headers = ['Unidade / Empresa', 'Dias', '1ª Leitura', 'Última', 'Consumo', 'Variação'];
   _tabelaHeader(doc, cols, headers);
@@ -175,7 +191,6 @@ function gerarPDFMensal(linhas, resumo, { condominio, mes, ano }, res) {
     ], i % 2 === 0, alertaCor);
   });
 
-  // Alertas
   const alertas = linhas.filter(l => l.alerta);
   if (alertas.length) {
     doc.moveDown();
@@ -204,7 +219,6 @@ function _tabelaLinhaComFoto(doc, cols, values, zebra, alertaCor, varCor, varIdx
   let x = x0;
   values.forEach((v, i) => {
     if (i === cols.length - 1 && v && v.startsWith('/uploads/')) {
-      // Miniatura de foto
       try {
         const fpath = path.join(__dirname, '../../', v);
         if (fs.existsSync(fpath)) {
@@ -230,12 +244,9 @@ function _tabelaLinhaComFoto(doc, cols, values, zebra, alertaCor, varCor, varIdx
 
 function _cabecalho(doc, titulo, condominio, periodo) {
   doc.rect(0, 0, 595, 75).fill('#254086');
-  // Logo / nome
   doc.fillColor('white').fontSize(15).font('Helvetica-Bold').text('reflow', 40, 16);
   doc.fontSize(8).font('Helvetica').fillColor('rgba(255,255,255,0.7)').text('Sistema de leitura de medidores', 40, 34);
-  // Título e info — lado direito, com fonte menor para caber
   doc.fontSize(11).font('Helvetica-Bold').fillColor('white').text(titulo, 200, 14, { align: 'right', width: 355 });
-  // Condomínio e período em duas linhas se necessário
   const infoStr = condominio + '  |  ' + periodo;
   doc.fontSize(8).font('Helvetica').fillColor('#c4cde8').text(infoStr, 200, 30, { align: 'right', width: 355, lineBreak: true });
   doc.moveDown(3.5);
@@ -270,8 +281,6 @@ function _tabelaLinha(doc, cols, values, zebra, alertaCor) {
     x += cols[i];
   });
   doc.y = y + h + 2;
-
-  // Nova página se necessário
   if (doc.y > 760) doc.addPage();
 }
 
@@ -325,11 +334,8 @@ function gerarPDFExtrato(extratos, { condominio, mes, ano }, res) {
 
   extratos.forEach((e, idx) => {
     doc.addPage();
-
-    // Cabeçalho da página
     _cabecalho(doc, 'Extrato de Leitura', condominio, nomeMes + ' de ' + ano);
 
-    // Identificação da unidade
     const unidadeStr = (e.bloco ? e.bloco + ' · ' : '') + e.unidade;
     doc.roundedRect(40, doc.y, 515, 44, 4).fillAndStroke('#f0f4ff', '#c4cde8');
     const uy = doc.y - 40;
@@ -338,7 +344,6 @@ function gerarPDFExtrato(extratos, { condominio, mes, ano }, res) {
        .text((e.empresa || 'Sem empresa ocupante') + '  |  Série: ' + (e.numero_serie || '—') + '  |  ' + {AGUA:'Água',ENERGIA:'Energia',GAS:'Gás'}[e.tipo], 52, uy + 24);
     doc.moveDown(2);
 
-    // Tabela de dias
     const cols = [75, 35, 75, 75, 90, 30, 135];
     const headers = ['Data', 'Dia', 'Valor m³', 'Consumo', 'Leitor', '📷', 'Observações'];
     _tabelaHeader(doc, cols, headers);
@@ -359,7 +364,6 @@ function gerarPDFExtrato(extratos, { condominio, mes, ano }, res) {
       }
     });
 
-    // Rodapé da unidade — total
     const y = doc.y;
     doc.rect(40, y, 515, 20).fill('#254086');
     doc.fillColor('white').fontSize(9).font('Helvetica-Bold')

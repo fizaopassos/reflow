@@ -17,13 +17,35 @@ function calcVariacao(atual, anterior) {
   return +(parseFloat(atual) - parseFloat(anterior)).toFixed(3);
 }
 
-/**
- * Retorna o maior valor de casas_decimais dentre as linhas.
- * Usado nos cards de resumo para nunca perder precisão.
- */
 function maxCasas(linhas, campo = 'casas_decimais') {
   if (!linhas || !linhas.length) return 2;
   return linhas.reduce((max, l) => Math.max(max, l[campo] ?? 2), 0);
+}
+
+function isGeral(empresa) {
+  if (!empresa) return true;
+  const norm = empresa.trim().toLowerCase();
+  return norm === 'geral' || norm === 'área comum' || norm === 'area comum';
+}
+
+function calcAreaComum(linhas, campoConsumo = 'consumo_m3') {
+  const gerais     = linhas.filter(l => isGeral(l.empresa));
+  const privativos = linhas.filter(l => !isGeral(l.empresa));
+
+  if (!gerais.length) return null;
+
+  const casas        = maxCasas(linhas);
+  const consumoGeral = +gerais    .reduce((s, l) => s + (l[campoConsumo] || 0), 0).toFixed(casas);
+  const consumoPriv  = +privativos.reduce((s, l) => s + (l[campoConsumo] || 0), 0).toFixed(casas);
+  const consumoComum = +(consumoGeral - consumoPriv).toFixed(casas);
+
+  return {
+    consumo_geral:      consumoGeral,
+    consumo_privativo:  consumoPriv,
+    consumo_area_comum: consumoComum,
+    negativo:           consumoComum < 0,
+    casas_decimais:     casas,
+  };
 }
 
 // ── RELATÓRIO PERÍODO ─────────────────────────────────
@@ -122,7 +144,6 @@ async function periodo(req, res) {
 
   const condo = await prisma.condominio.findUnique({ where: { id: condominio_id }, select: { nome: true } });
 
-  // ── Acumulado por medidor: consumo = última leitura − primeira leitura do período ──
   const primeiraLeituraPorMedidor = {};
   const ultimaLeituraPorMedidor   = {};
 
@@ -137,7 +158,7 @@ async function periodo(req, res) {
   const acumuladoPorMedidor = {};
   leituras.forEach(l => {
     if (!acumuladoPorMedidor[l.medidor_id]) {
-      const casas   = l.medidor.casas_decimais ?? 2;
+      const casas    = l.medidor.casas_decimais ?? 2;
       const primeira = primeiraLeituraPorMedidor[l.medidor_id];
       const ultima   = ultimaLeituraPorMedidor[l.medidor_id];
       const consumo  = +(ultima - primeira).toFixed(casas);
@@ -154,7 +175,6 @@ async function periodo(req, res) {
   const acumulado = Object.values(acumuladoPorMedidor)
     .sort((a, b) => b.consumo - a.consumo);
 
-  // Usa o maior número de casas entre todos os medidores para o total
   const casasTotal = maxCasas(acumulado);
   const consumoTotalPeriodo = +acumulado
     .reduce((s, a) => s + a.consumo, 0)
@@ -165,8 +185,12 @@ async function periodo(req, res) {
     total_alertas:       linhas.filter(l => l.alerta).length,
     consumo_total_m3:    consumoTotalPeriodo,
     medidores_com_dados: acumulado.length,
-    casas_decimais:      casasTotal, // ← novo: frontend usa para formatar o resumo
+    casas_decimais:      casasTotal,
   };
+
+  const areaComum = calcAreaComum(
+    acumulado.map(a => ({ ...a, consumo_m3: a.consumo }))
+  );
 
   if (formato === 'csv') {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -187,7 +211,7 @@ async function periodo(req, res) {
     return gerarPDFPeriodo(linhas, { condominio: condo?.nome || '', dataInicio: inicio, dataFim: fim }, res, acumulado, resumo, graficoBuffer);
   }
 
-  res.json({ condominio: condo?.nome, data_inicio, data_fim, resumo, acumulado, leituras: linhas });
+  res.json({ condominio: condo?.nome, data_inicio, data_fim, resumo, area_comum: areaComum, acumulado, leituras: linhas });
 }
 
 // ── RELATÓRIO MENSAL ──────────────────────────────────
@@ -258,7 +282,6 @@ async function mensal(req, res) {
     };
   }).sort((a, b) => b.consumo_m3 - a.consumo_m3);
 
-  // Usa o maior número de casas entre todos os medidores para total e média
   const casasTotal = maxCasas(linhas);
 
   const resumo = {
@@ -268,8 +291,10 @@ async function mensal(req, res) {
       ? +(totalConsumo / linhas.length).toFixed(casasTotal)
       : 0,
     total_alertas:         linhas.filter(l => l.alerta).length,
-    casas_decimais:        casasTotal, // ← novo: frontend usa para formatar o resumo
+    casas_decimais:        casasTotal,
   };
+
+  const areaComum = calcAreaComum(linhas);
 
   const condo = await prisma.condominio.findUnique({ where: { id: condominio_id }, select: { nome: true } });
 
@@ -283,7 +308,7 @@ async function mensal(req, res) {
     return gerarPDFMensal(linhas, resumo, { condominio: condo?.nome || '', mes: mesInt, ano: anoInt }, res);
   }
 
-  res.json({ condominio: condo?.nome, mes: mesInt, ano: anoInt, resumo, leituras: linhas });
+  res.json({ condominio: condo?.nome, mes: mesInt, ano: anoInt, resumo, area_comum: areaComum, leituras: linhas });
 }
 
 // ── ALERTAS ───────────────────────────────────────────
@@ -435,7 +460,8 @@ async function extrato(req, res) {
   res.json({ condominio: condo?.nome, mes: mesInt, ano: anoInt, extratos });
 }
 
-// ── DADOS PARA GRÁFICO DE CONSUMO ─────────────────────
+// ── GRÁFICO DONUT — consumo por empresa (mensal) ──────
+// Privativos nas cores normais + fatia "Área comum" em cinza
 async function consumoGrafico(req, res) {
   const { condominio_id, mes, ano, tipo } = req.query;
   if (!condominio_id) return res.status(400).json({ erro: 'condominio_id é obrigatório.' });
@@ -469,6 +495,7 @@ async function consumoGrafico(req, res) {
     if (!porUnidade[key]) {
       porUnidade[key] = {
         label:    l.medidor.unidade.empresa || l.medidor.unidade.identificador,
+        empresa:  l.medidor.unidade.empresa,
         unidade:  l.medidor.unidade.identificador,
         bloco:    l.medidor.unidade.bloco,
         tipo:     l.medidor.tipo,
@@ -481,20 +508,46 @@ async function consumoGrafico(req, res) {
     }
   });
 
-  const dados = Object.values(porUnidade).map(u => ({
-    label:   u.label,
-    unidade: u.unidade,
-    bloco:   u.bloco,
-    tipo:    u.tipo,
-    consumo: +Math.max(0, u.ultima - u.primeira).toFixed(u.casas),
-  })).filter(d => d.consumo > 0).sort((a, b) => b.consumo - a.consumo);
+  // Separa privativos e geral
+  const todos = Object.values(porUnidade).map(u => ({
+    label:    u.label,
+    empresa:  u.empresa,
+    unidade:  u.unidade,
+    bloco:    u.bloco,
+    tipo:     u.tipo,
+    geral:    isGeral(u.empresa),
+    consumo:  +Math.max(0, u.ultima - u.primeira).toFixed(u.casas),
+    casas:    u.casas,
+  }));
+
+  // Privativos ordenados por consumo
+  const privativos = todos
+    .filter(u => !u.geral && u.consumo > 0)
+    .sort((a, b) => b.consumo - a.consumo);
+
+  // Calcula área comum: consumo_geral - soma_privativos
+  const consumoGeral = todos
+    .filter(u => u.geral)
+    .reduce((s, u) => s + u.consumo, 0);
+  const consumoPriv = privativos.reduce((s, u) => s + u.consumo, 0);
+  const consumoComum = +(consumoGeral - consumoPriv).toFixed(
+    todos.reduce((max, u) => Math.max(max, u.casas), 2)
+  );
+
+  // Monta dados finais: privativos + área comum (se existir medidor geral)
+  const dados = [...privativos];
+  const temGeral = todos.some(u => u.geral);
+  if (temGeral && consumoComum > 0) {
+    dados.push({ label: 'Área comum', consumo: consumoComum, area_comum: true });
+  }
 
   const unidadeMedida = tipo === 'ENERGIA' ? 'kWh' : 'm³';
 
   res.json({ mes: mesInt, ano: anoInt, tipo: tipo || 'TODOS', unidade_medida: unidadeMedida, dados });
 }
 
-// ── GRÁFICO DE CONSUMO POR PERÍODO ────────────────────
+// ── GRÁFICO BARRAS — consumo por período ──────────────
+// Privativos nas cores normais + barra "Área comum" em cinza
 async function consumoGraficoPeriodo(req, res) {
   const { condominio_id, data_inicio, data_fim, tipo } = req.query;
   if (!condominio_id || !data_inicio || !data_fim) {
@@ -546,6 +599,7 @@ async function consumoGraficoPeriodo(req, res) {
     if (!porMedidor[key]) {
       porMedidor[key] = {
         label:    l.medidor.unidade.empresa || l.medidor.unidade.identificador,
+        empresa:  l.medidor.unidade.empresa,
         tipo:     l.medidor.tipo,
         casas:    l.medidor.casas_decimais ?? 2,
         primeira: parseFloat(l.valor),
@@ -556,14 +610,33 @@ async function consumoGraficoPeriodo(req, res) {
     }
   });
 
-  const dados = Object.values(porMedidor)
-    .map(u => ({
-      label:   u.label,
-      tipo:    u.tipo,
-      consumo: +Math.max(0, u.ultima - u.primeira).toFixed(u.casas),
-    }))
-    .filter(d => d.consumo > 0)
+  const todos = Object.values(porMedidor).map(u => ({
+    label:   u.label,
+    empresa: u.empresa,
+    tipo:    u.tipo,
+    geral:   isGeral(u.empresa),
+    consumo: +Math.max(0, u.ultima - u.primeira).toFixed(u.casas),
+    casas:   u.casas,
+  }));
+
+  const privativos = todos
+    .filter(u => !u.geral && u.consumo > 0)
     .sort((a, b) => b.consumo - a.consumo);
+
+  const consumoGeral = todos
+    .filter(u => u.geral)
+    .reduce((s, u) => s + u.consumo, 0);
+  const consumoPriv  = privativos.reduce((s, u) => s + u.consumo, 0);
+  const consumoComum = +(consumoGeral - consumoPriv).toFixed(
+    todos.reduce((max, u) => Math.max(max, u.casas), 2)
+  );
+
+  const temGeral = todos.some(u => u.geral);
+  const dadosBase = [...privativos];
+    if (temGeral && consumoComum > 0) {
+  dadosBase.push({ label: 'Área comum', consumo: consumoComum, area_comum: true });
+   }
+  const dados = dadosBase.sort((a, b) => b.consumo - a.consumo);
 
   const unidadeMedida = tipo === 'ENERGIA' ? 'kWh' : 'm³';
 

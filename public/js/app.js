@@ -46,7 +46,7 @@ function interpretarInput(input, casas) {
 
 async function resolverFotoUrl(fotoUrl) {
   if (!fotoUrl) return null;
-  if (fotoUrl.startsWith('/uploads/')) return fotoUrl; // foto antiga, local
+  if (fotoUrl.startsWith('/uploads/')) return fotoUrl;
   try {
     const data = await API.get('/fotos/signed-url?caminho=' + encodeURIComponent(fotoUrl));
     return data.url;
@@ -87,7 +87,6 @@ const Router = {
       Router.go(Auth.is('LEITOR') ? 'leitor' : 'dashboard');
       return;
     }
-    // LEITOR só pode acessar leitor e leitura
     if (Auth.is('LEITOR') && !['leitor','leitura'].includes(page)) {
       Router.go('leitor');
       return;
@@ -140,7 +139,6 @@ const Navbar = {
       btn.classList.toggle('active', btn.dataset.page === Router.current);
     });
 
-    // LEITOR: oculta toda a navbar padrão, mostra navbar própria
     if (Auth.is('LEITOR')) {
       nav.style.display = 'none';
       nav.classList.add('nav-hidden');
@@ -188,6 +186,7 @@ document.getElementById('form-login')?.addEventListener('submit', async e => {
 let _dashChart = null;
 let _dashChartPeriodo = null;
 let _dashCondominios = [];
+const COR_AREA_COMUM = '#64748b';
 
 function _popularSelectMes() {
   const sel = document.getElementById('dash-grafico-mes');
@@ -237,13 +236,20 @@ async function atualizarGraficoConsumo() {
 
     const unidade = data.unidade_medida || 'm³';
     const CORES = ['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#ec4899','#14b8a6','#a855f7','#f97316','#84cc16'];
+
+    // Área comum recebe cinza; privativos recebem cores normais
+    let coresIdx = 0;
+    const bgCores = data.dados.map(d =>
+      d.area_comum ? COR_AREA_COMUM : CORES[coresIdx++ % CORES.length]
+    );
+
     _dashChart = new Chart(canvas, {
       type: 'doughnut',
       data: {
         labels: data.dados.map(d => d.label),
         datasets: [{
           data: data.dados.map(d => d.consumo),
-          backgroundColor: data.dados.map((_, i) => CORES[i % CORES.length]),
+          backgroundColor: bgCores,
           borderWidth: 2,
         }],
       },
@@ -263,6 +269,7 @@ async function atualizarGraficoConsumo() {
     console.error('Erro ao carregar gráfico de consumo:', e);
   }
 }
+
 
 
 async function atualizarGraficoPeriodo() {
@@ -305,11 +312,22 @@ async function atualizarGraficoPeriodo() {
     canvas.style.display = '';
 
     const unidade = data.unidade_medida || 'm³';
-    const altura = Math.max(160, data.dados.length * 38);
+    const altura  = Math.max(160, data.dados.length * 38);
     canvas.style.height = altura + 'px';
     canvas.height = altura;
 
     const CORES = ['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#ec4899','#14b8a6','#a855f7','#f97316','#84cc16'];
+
+    // Área comum recebe cinza; privativos recebem cores normais
+    let coresIdx = 0;
+    const bgCores     = data.dados.map(d => d.area_comum ? COR_AREA_COMUM + 'cc' : CORES[coresIdx++ % CORES.length] + 'cc');
+    const borderCores = data.dados.map((d, i) => d.area_comum ? COR_AREA_COMUM : CORES[(i < coresIdx ? i : coresIdx - 1) % CORES.length]);
+
+    // Recalcula índices corretamente para border
+    let ci = 0;
+    const bgFinal     = data.dados.map(d => d.area_comum ? COR_AREA_COMUM + 'cc' : CORES[ci++ % CORES.length] + 'cc');
+    ci = 0;
+    const borderFinal = data.dados.map(d => d.area_comum ? COR_AREA_COMUM     : CORES[ci++ % CORES.length]);
 
     _dashChartPeriodo = new Chart(canvas, {
       type: 'bar',
@@ -317,9 +335,9 @@ async function atualizarGraficoPeriodo() {
         labels: data.dados.map(d => d.label),
         datasets: [{
           label: 'Consumo ' + unidade,
-          data: data.dados.map(d => d.consumo),
-          backgroundColor: data.dados.map((_, i) => CORES[i % CORES.length] + 'cc'),
-          borderColor:     data.dados.map((_, i) => CORES[i % CORES.length]),
+          data:            data.dados.map(d => d.consumo),
+          backgroundColor: bgFinal,
+          borderColor:     borderFinal,
           borderWidth: 1.5,
           borderRadius: 4,
         }],
@@ -362,6 +380,7 @@ async function atualizarGraficoPeriodo() {
   }
 }
 
+
 Views.dashboard = async () => {
   const user = Auth.user;
   document.getElementById('topbar-nome').textContent = user?.nome || '';
@@ -369,11 +388,10 @@ Views.dashboard = async () => {
   const agora    = new Date();
   const mesLabel = agora.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
   const mesTexto = 'Referência: ' + mesLabel;
-  document.getElementById('dashboard-mes').textContent         = mesTexto;
+  document.getElementById('dashboard-mes').textContent = mesTexto;
   const elMesDesktop = document.getElementById('dashboard-mes-desktop');
   if (elMesDesktop) elMesDesktop.textContent = mesTexto;
 
-  // Mostra seções de atalhos conforme role
   const elLeituras = document.getElementById('dash-atalhos-leituras');
   const elAdmin    = document.getElementById('dash-atalhos-admin');
   if (elLeituras) elLeituras.style.display = Auth.canManage() ? '' : 'none';
@@ -410,7 +428,6 @@ Views.dashboard = async () => {
     const elProgMobile = document.getElementById('dash-progresso-mobile');
     if (elProgMobile) elProgMobile.innerHTML = condosHtml;
 
-    // Pendentes (desktop)
     const elPend = document.getElementById('dash-pendentes');
     if (elPend) {
       const comPendentes = data.condominios.filter(c => c.pendentes > 0);
@@ -430,9 +447,8 @@ Views.dashboard = async () => {
       _dashCondominios = data.condominios;
       _popularSelectMes();
 
-      // Select de condomínio no gráfico mensal (se >1)
       if (data.condominios.length > 1) {
-        const opts    = data.condominios.map(c => '<option value="' + c.id + '">' + c.nome + '</option>').join('');
+        const opts     = data.condominios.map(c => '<option value="' + c.id + '">' + c.nome + '</option>').join('');
         const condoSel = document.getElementById('dash-grafico-condo');
         if (condoSel) {
           condoSel.innerHTML = '<select id="dash-grafico-condo-sel" style="margin-top:8px;width:100%" onchange="atualizarGraficoConsumo()">' + opts + '</select>';
@@ -440,7 +456,6 @@ Views.dashboard = async () => {
       }
 
       await atualizarGraficoConsumo();
-
       const panelPeriodo = document.getElementById('dash-periodo-painel');
       if (panelPeriodo) panelPeriodo.style.display = '';
       await _iniciarGraficoPeriodo();
@@ -455,7 +470,6 @@ Views.dashboard = async () => {
   }
 };
 
-
 // MEDIÇÕES
 Views.medicoes = async ({ condominio_id, nome }) => {
   document.getElementById('medicoes-titulo').textContent = nome || 'Medições';
@@ -463,7 +477,7 @@ Views.medicoes = async ({ condominio_id, nome }) => {
   const el = document.getElementById('medicoes-grid');
   el.innerHTML = '<p class="loading-msg">Carregando...</p>';
 
-  const agora = new Date();
+  const agora   = new Date();
   const diaHoje = agora.getDate();
   const mesHoje = agora.getMonth() + 1;
   const anoHoje = agora.getFullYear();
@@ -496,19 +510,19 @@ Views.medicoes = async ({ condominio_id, nome }) => {
     const nomeSeguro = nome.replace(/"/g, '');
     el.innerHTML = medidores.map(m => {
       const { leituraHoje, ultimaLeitura } = mapaLeituras[m.id] || {};
-      const tipoIcon = { AGUA: '💧', ENERGIA: '⚡', GAS: '🔥' }[m.tipo] || '📊';
+      const tipoIcon  = { AGUA: '💧', ENERGIA: '⚡', GAS: '🔥' }[m.tipo] || '📊';
       const temAlerta = alertasMedidores.has(m.id);
-      const badge = leituraHoje
+      const badge     = leituraHoje
         ? '<span class="badge badge-ok">Hoje ✓</span>'
         : '<span class="badge badge-pend">Pendente hoje</span>';
       const alertaBadge = temAlerta ? ' <span class="badge badge-alerta">⚠ Variação</span>' : '';
-      const casas = m.casas_decimais !== undefined ? m.casas_decimais : 3;
-      const ultimaInfo = ultimaLeitura
+      const casas       = m.casas_decimais !== undefined ? m.casas_decimais : 3;
+      const ultimaInfo  = ultimaLeitura
         ? '<span>Última: <strong>' + fmtValor(ultimaLeitura.valor, casas) + '</strong> — ' +
           diaSemana(ultimaLeitura.referencia_dia, ultimaLeitura.referencia_mes, ultimaLeitura.referencia_ano) + ' ' +
           String(ultimaLeitura.referencia_dia).padStart(2,'0') + '/' + String(ultimaLeitura.referencia_mes).padStart(2,'0') + '</span>'
         : '<span style="color:var(--text3)">Sem leituras no mês</span>';
-      const titulo = (m.unidade?.bloco ? m.unidade.bloco + ' · ' : '') + (m.unidade?.identificador || '—');
+      const titulo  = (m.unidade?.bloco ? m.unidade.bloco + ' · ' : '') + (m.unidade?.identificador || '—');
       const empresa = m.unidade?.empresa || '';
       return '<div class="card card-medidor" onclick="abrirLeitura(\'' + m.id + '\',\'' + condominio_id + '\',\'' + nome.replace(/'/g,'') + '\')">' +
         '<div class="card-header"><div>' +
@@ -536,10 +550,10 @@ Views.medicoes = async ({ condominio_id, nome }) => {
 function abrirLeitura(medidorId, condoId, condoNome) {
   const dados = window._medidoresData?.[medidorId] || {};
   Router.go('leitura', {
-    medidor_id: medidorId,
-    unidade: dados.unidade || '',
-    empresa: dados.empresa || '',
-    condominio_id: condoId,
+    medidor_id:      medidorId,
+    unidade:         dados.unidade || '',
+    empresa:         dados.empresa || '',
+    condominio_id:   condoId,
     condominio_nome: condoNome,
   });
 }
@@ -555,7 +569,7 @@ Views.leitura = async ({ medidor_id, unidade, empresa, condominio_id, condominio
     try {
       const med = await API.get('/medidores/' + medidor_id);
       window._casasDecimais = med.casas_decimais ?? 3;
-      const hint = document.getElementById('leitura-valor-hint');
+      const hint  = document.getElementById('leitura-valor-hint');
       const casas = window._casasDecimais;
       const exemplos = {
         0: 'Digite os dígitos sem vírgula  ex: 51403',
@@ -574,7 +588,6 @@ Views.leitura = async ({ medidor_id, unidade, empresa, condominio_id, condominio
   document.getElementById('leitura-mes').value = agora.getMonth() + 1;
   document.getElementById('leitura-ano').value = agora.getFullYear();
 
-  // Data retroativa — admin vê, pré-preenchida se vier do calendário
   const campoData = document.getElementById('campo-data-retroativa');
   if (campoData) {
     campoData.style.display = Auth.canAdmin() ? 'block' : 'none';
@@ -587,7 +600,6 @@ Views.leitura = async ({ medidor_id, unidade, empresa, condominio_id, condominio
     }
   }
 
-  // Reset visual
   document.getElementById('leitura-preview').style.display   = 'none';
   document.getElementById('leitura-idle').style.display      = 'flex';
   document.getElementById('form-leitura').style.display      = 'flex';
@@ -651,10 +663,7 @@ function mostrarLeituraExistente(leitura) {
         '\')">🗑️ Excluir</button>' +
       '</div>';
   } else {
-    acoesHtml =
-      '<div style="font-size:12px;color:var(--text3);margin-top:10px">' +
-      'Somente gestor ou admin pode editar.' +
-      '</div>';
+    acoesHtml = '<div style="font-size:12px;color:var(--text3);margin-top:10px">Somente gestor ou admin pode editar.</div>';
   }
 
   el.innerHTML =
@@ -667,8 +676,7 @@ function mostrarLeituraExistente(leitura) {
         String(leitura.referencia_mes).padStart(2,'0') + '/' +
         leitura.referencia_ano +
       '</div>' +
-      obsHtml +
-      acoesHtml +
+      obsHtml + acoesHtml +
     '</div>';
 
   el.style.display = 'block';
@@ -696,7 +704,6 @@ function iniciarEdicao(leituraId, valorAtual, obsAtual, dia, mes, ano) {
   document.getElementById('leitura-valor-input').focus();
 }
 
-// ── EXCLUSÃO DE LEITURA ───────────────────────────────
 function confirmarExclusao(leituraId, dataStr) {
   abrirModal({
     icone: '🗑️',
@@ -715,12 +722,11 @@ function confirmarExclusao(leituraId, dataStr) {
   });
 }
 
-// Preview formatação enquanto digita
 document.getElementById('leitura-valor-input')?.addEventListener('input', function() {
   const hint = document.getElementById('leitura-valor-hint');
   if (!hint || !this.value) { if(hint) hint.textContent = ''; return; }
   const casas = window._casasDecimais ?? 3;
-  const num = interpretarInput(this.value, casas);
+  const num   = interpretarInput(this.value, casas);
   if (!isNaN(num)) {
     hint.textContent = '→ ' + fmtValor(num, casas);
     hint.style.color = 'var(--ok)';
@@ -749,7 +755,7 @@ document.getElementById('form-leitura')?.addEventListener('submit', async e => {
   const leituraId  = document.getElementById('leitura-id-edicao').value;
   const btn        = document.getElementById('form-leitura-submit');
 
-  const casas = window._casasDecimais ?? 3;
+  const casas    = window._casasDecimais ?? 3;
   const valorNum = interpretarInput(valor, casas);
   if (!valor || isNaN(valorNum) || valorNum < 0) { toast('Digite um valor válido.', 'warn'); return; }
   if (valorNum >= 99999999) { toast('Valor muito alto. Verifique se digitou certo.', 'warn'); return; }
@@ -780,14 +786,14 @@ document.getElementById('form-leitura')?.addEventListener('submit', async e => {
       }
 
       const form = new FormData();
-      form.append('medidor_id', medidor_id);
-      form.append('valor', valor);
+      form.append('medidor_id',     medidor_id);
+      form.append('valor',          valor);
       form.append('referencia_dia', diaFinal);
       form.append('referencia_mes', mesFinal);
       form.append('referencia_ano', anoFinal);
-      form.append('metodo', 'MANUAL');
-      form.append('observacoes', obs || '');
-      form.append('imagem', file);
+      form.append('metodo',         'MANUAL');
+      form.append('observacoes',    obs || '');
+      form.append('imagem',         file);
       await API.leituras.registrar(form);
       toast('✓ Leitura salva!', 'ok');
     }
@@ -799,12 +805,9 @@ document.getElementById('form-leitura')?.addEventListener('submit', async e => {
   }
 });
 
-
-
 async function _iniciarGraficoPeriodo() {
   if (!Auth.canManage()) return;
 
-  // Datas padrão: últimos 30 dias
   const hoje = new Date();
   const ini  = new Date(hoje); ini.setDate(ini.getDate() - 29);
   const fmt  = d => d.toISOString().split('T')[0];
@@ -814,7 +817,6 @@ async function _iniciarGraficoPeriodo() {
   if (iniEl && !iniEl.value) iniEl.value = fmt(ini);
   if (fimEl && !fimEl.value) fimEl.value = fmt(hoje);
 
-  // Popula select de condomínios se mais de um
   if (_dashCondominios.length > 1) {
     const condoWrap = document.getElementById('dash-periodo-condo-wrap');
     if (condoWrap) {
@@ -826,18 +828,16 @@ async function _iniciarGraficoPeriodo() {
   await atualizarGraficoPeriodo();
 }
 
-
 // ── VIEW LEITOR ───────────────────────────────────────
 Views.leitor = async () => {
   if (!Auth.is('LEITOR')) { Router.go('dashboard'); return; }
 
-  const user = Auth.user;
-  const agora = new Date();
+  const user    = Auth.user;
+  const agora   = new Date();
   const diaHoje = agora.getDate();
   const mesHoje = agora.getMonth() + 1;
   const anoHoje = agora.getFullYear();
 
-  // Atualiza nome no topbar leitor
   const nomeEl = document.getElementById('leitor-nome');
   if (nomeEl) nomeEl.textContent = user?.nome || '';
 
@@ -848,25 +848,21 @@ Views.leitor = async () => {
   listaEl.innerHTML = '<p class="loading-msg">Carregando...</p>';
 
   try {
-    // Busca condomínios do leitor via dashboard
     const data = await API.dashboard();
     if (!data.condominios.length) {
       listaEl.innerHTML = '<p class="empty-msg">Nenhum condomínio vinculado.</p>';
       return;
     }
 
-    // Se tiver só um condomínio, usa direto; se tiver mais, pega o primeiro
     const condo = data.condominios[0];
     window._leitorCondoId   = condo.id;
     window._leitorCondoNome = condo.nome;
 
-    // Busca medidores e leituras do mês
     const [medidores, leituras] = await Promise.all([
       API.get('/medidores?condominio_id=' + condo.id),
       API.leituras.listar({ condominio_id: condo.id, mes: mesHoje, ano: anoHoje }),
     ]);
 
-    // Mapa de leituras de hoje
     const leitosHoje = new Set();
     leituras.forEach(l => {
       if (l.referencia_dia === diaHoje && l.referencia_mes === mesHoje && l.referencia_ano === anoHoje) {
@@ -874,11 +870,10 @@ Views.leitor = async () => {
       }
     });
 
-    const total   = medidores.length;
-    const lidos   = leitosHoje.size;
-    const pct     = total > 0 ? Math.round(lidos / total * 100) : 0;
+    const total = medidores.length;
+    const lidos = leitosHoje.size;
+    const pct   = total > 0 ? Math.round(lidos / total * 100) : 0;
 
-    // Progresso no topo
     if (progressoEl) {
       progressoEl.innerHTML =
         '<div class="leitor-prog-texto">' +
@@ -891,12 +886,10 @@ Views.leitor = async () => {
         '<div style="font-size:11px;color:var(--text3);margin-top:4px;text-align:right">' + pct + '%</div>';
     }
 
-    // Ordena: pendentes primeiro, depois lidos
     const pendentes = medidores.filter(m => !leitosHoje.has(m.id));
     const lidosList = medidores.filter(m =>  leitosHoje.has(m.id));
     const ordenados = [...pendentes, ...lidosList];
 
-    // Mapa de última leitura por medidor
     const ultimaLeitura = {};
     leituras.forEach(l => {
       const atual = ultimaLeitura[l.medidor_id];
@@ -949,23 +942,22 @@ Views.historico = async ({ medidor_id, medidor_label, condominio_id, condominio_
 
   window._historicoCtx = { medidor_id, medidor_label, condominio_id, condominio_nome };
 
-  const tituloEl  = document.getElementById('historico-titulo');
-  const subEl     = document.getElementById('historico-sub');
-  const seletores = document.getElementById('historico-seletores');
-  const filtros   = document.getElementById('historico-filtros');
-  const lista     = document.getElementById('historico-lista');
+  const tituloEl   = document.getElementById('historico-titulo');
+  const subEl      = document.getElementById('historico-sub');
+  const seletores  = document.getElementById('historico-seletores');
+  const filtros    = document.getElementById('historico-filtros');
+  const lista      = document.getElementById('historico-lista');
   const massaPanel = document.getElementById('historico-massa-panel');
 
-  // Reseta abas
   _historicoSwitchAba('historico');
 
   if (medidor_id) {
     if (tituloEl) tituloEl.textContent = medidor_label || 'Histórico';
     if (subEl)    subEl.textContent    = condominio_nome || '';
-    if (seletores)  seletores.style.display  = 'none';
+    if (seletores) seletores.style.display = 'none';
     const abasEl = document.getElementById('historico-abas');
     if (abasEl) abasEl.style.display = '';
-    if (filtros)    filtros.style.display    = '';
+    if (filtros) filtros.style.display = '';
     _historicoPopularFiltros();
     await _historicoCarregar();
     return;
@@ -973,13 +965,13 @@ Views.historico = async ({ medidor_id, medidor_label, condominio_id, condominio_
 
   if (tituloEl) tituloEl.textContent = 'Histórico';
   if (subEl)    subEl.textContent    = 'Selecione o medidor';
-  if (seletores)   seletores.style.display   = '';
-  if (filtros)     filtros.style.display     = 'none';
-  if (massaPanel)  massaPanel.style.display  = 'none';
-  if (lista)       lista.innerHTML = '';
+  if (seletores)  seletores.style.display  = '';
+  if (filtros)    filtros.style.display    = 'none';
+  if (massaPanel) massaPanel.style.display = 'none';
+  if (lista)      lista.innerHTML = '';
 
   await _historicoPopularSeletores();
-}
+};
 
 async function _historicoPopularSeletores() {
   const selCondo = document.getElementById('hist-sel-condo');
@@ -1033,7 +1025,10 @@ async function _historicoPopularSeletores() {
       const abasEl = document.getElementById('historico-abas');
       if (abasEl) abasEl.style.display = '';
 
-      _historicoSwitchAba(abaAlvo);;
+      // Usa aba inicial se definida pelo atalho, senão vai para histórico
+      const abaAlvo = window._historicoAbaInicial || 'historico';
+      window._historicoAbaInicial = null;
+      _historicoSwitchAba(abaAlvo);
       _historicoPopularFiltros();
       await _historicoCarregar();
     };
@@ -1043,7 +1038,6 @@ async function _historicoPopularSeletores() {
 }
 
 function _historicoSwitchAba(aba) {
-  const abas   = ['historico', 'massa'];
   const tabEls = document.querySelectorAll('.hist-tab');
   const panels = {
     historico: document.getElementById('historico-aba-historico'),
@@ -1112,9 +1106,7 @@ async function _historicoCarregar() {
       const fotoHtml   = l.foto_url
         ? `<a href="#" onclick="abrirFoto('${l.foto_url}', event);return false;" class="hist-foto-link" title="Ver foto">📷</a>`
         : '';
-      const obsHtml = l.observacoes
-        ? `<div class="hist-obs">${l.observacoes}</div>`
-        : '';
+      const obsHtml = l.observacoes ? `<div class="hist-obs">${l.observacoes}</div>` : '';
 
       return `<div class="hist-item" id="hist-item-${l.id}">
         <div class="hist-item-header">
@@ -1128,9 +1120,7 @@ async function _historicoCarregar() {
             <button class="btn-excluir btn-sm" onclick="historicoConfirmarExclusao('${l.id}','${dataStr}')">🗑️</button>
           </div>
         </div>
-        <div class="hist-meta">
-          <span>${metodoIcon} ${l.user.nome}${editadoPor}</span>
-        </div>
+        <div class="hist-meta"><span>${metodoIcon} ${l.user.nome}${editadoPor}</span></div>
         ${obsHtml}
         <div class="hist-edit-form" id="hist-edit-${l.id}" style="display:none">
           <div class="form-row" style="margin-top:10px">
@@ -1170,17 +1160,9 @@ function historicoFecharEdicao(id) {
 async function historicoSalvarEdicao(id, dia, mes, ano) {
   const valor = document.getElementById('hist-valor-' + id)?.value;
   const obs   = document.getElementById('hist-obs-'   + id)?.value;
-
   if (!valor) { toast('Digite um valor.', 'warn'); return; }
-
   try {
-    await API.leituras.editar(id, {
-      valor,
-      observacoes:    obs,
-      referencia_dia: dia,
-      referencia_mes: mes,
-      referencia_ano: ano,
-    });
+    await API.leituras.editar(id, { valor, observacoes: obs, referencia_dia: dia, referencia_mes: mes, referencia_ano: ano });
     toast('✓ Leitura atualizada!', 'ok');
     await _historicoCarregar();
   } catch (err) {
@@ -1225,21 +1207,15 @@ function abrirHistorico(medidorId, condoId, condoNome) {
   });
 }
 
-// Versão chamada pelo botão via data-attributes (evita problemas de escape)
 function abrirHistoricoBtn(btn) {
-  const mid   = btn.dataset.mid;
-  const cid   = btn.dataset.cid;
-  const cnome = btn.dataset.cnome;
-  abrirHistorico(mid, cid, cnome);
+  abrirHistorico(btn.dataset.mid, btn.dataset.cid, btn.dataset.cnome);
 }
-
 
 // ── LANÇAMENTO EM MASSA ───────────────────────────────
 async function _massaIniciar() {
   const panel = document.getElementById('massa-form');
   if (!panel) return;
 
-  // Define datas padrão: últimos 7 dias
   const hoje = new Date();
   const ini  = new Date(hoje);
   ini.setDate(ini.getDate() - 6);
@@ -1250,7 +1226,7 @@ async function _massaIniciar() {
   if (iniEl && !iniEl.value) iniEl.value = fmtDate(ini);
   if (fimEl && !fimEl.value) fimEl.value = fmtDate(hoje);
 
-  document.getElementById('massa-linhas').innerHTML = '';
+  document.getElementById('massa-linhas').innerHTML   = '';
   document.getElementById('massa-resultado').innerHTML = '';
 }
 
@@ -1258,25 +1234,20 @@ async function massaGerarLinhas() {
   const ctx  = window._historicoCtx;
   const iniV = document.getElementById('massa-data-ini')?.value;
   const fimV = document.getElementById('massa-data-fim')?.value;
-  if (!ctx?.medidor_id)    { toast('Nenhum medidor selecionado.', 'warn'); return; }
-  if (!iniV || !fimV)      { toast('Preencha as datas.', 'warn'); return; }
-  if (iniV > fimV)         { toast('Data inicial maior que final.', 'warn'); return; }
+  if (!ctx?.medidor_id) { toast('Nenhum medidor selecionado.', 'warn'); return; }
+  if (!iniV || !fimV)   { toast('Preencha as datas.', 'warn'); return; }
+  if (iniV > fimV)      { toast('Data inicial maior que final.', 'warn'); return; }
 
-  const ini = new Date(iniV + 'T00:00:00');
-  const fim = new Date(fimV + 'T00:00:00');
+  const ini      = new Date(iniV + 'T00:00:00');
+  const fim      = new Date(fimV + 'T00:00:00');
   const diffDias = Math.round((fim - ini) / 86400000) + 1;
   if (diffDias > 31) { toast('Máximo de 31 dias por vez.', 'warn'); return; }
 
   const el = document.getElementById('massa-linhas');
   el.innerHTML = '<p class="loading-msg">Verificando leituras existentes...</p>';
 
-  // Busca leituras já existentes no período
-  const mesIni = ini.getMonth() + 1, anoIni = ini.getFullYear();
-  const mesFim = fim.getMonth() + 1, anoFim = fim.getFullYear();
-
   let leituraExistentes = [];
   try {
-    // Busca por cada mês envolvido
     const mesesEnvolvidos = new Set();
     let cur = new Date(ini);
     while (cur <= fim) {
@@ -1298,26 +1269,24 @@ async function massaGerarLinhas() {
     existeMap[key] = l;
   });
 
-  // Busca casas_decimais do medidor
   let casas = 3;
   try { const m = await API.get('/medidores/' + ctx.medidor_id); casas = m.casas_decimais ?? 3; } catch {}
   window._massaCasas = casas;
 
   const diasSemana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
   let html = '';
-  let d = new Date(ini);
+  let d    = new Date(ini);
 
   while (d <= fim) {
-    const ano = d.getFullYear();
-    const mes = d.getMonth() + 1;
-    const dia = d.getDate();
-    const key = ano + '-' + String(mes).padStart(2,'0') + '-' + String(dia).padStart(2,'0');
+    const ano  = d.getFullYear();
+    const mes  = d.getMonth() + 1;
+    const dia  = d.getDate();
+    const key  = ano + '-' + String(mes).padStart(2,'0') + '-' + String(dia).padStart(2,'0');
     const dsem = diasSemana[d.getDay()];
     const dataLabel = dsem + ' ' + String(dia).padStart(2,'0') + '/' + String(mes).padStart(2,'0') + '/' + ano;
     const existente = existeMap[key];
 
     if (existente) {
-      // Dia já tem leitura — mostra somente leitura, sem campos
       html += `<div class="massa-linha massa-linha-ok">
         <div class="massa-linha-data">${dataLabel}</div>
         <div class="massa-linha-existente">
@@ -1329,14 +1298,7 @@ async function massaGerarLinhas() {
       html += `<div class="massa-linha" id="massa-linha-${key}" data-dia="${dia}" data-mes="${mes}" data-ano="${ano}">
         <div class="massa-linha-data">${dataLabel}</div>
         <div class="massa-linha-campos">
-          <input
-            type="text"
-            class="massa-valor-input"
-            id="massa-val-${key}"
-            inputmode="decimal"
-            placeholder="valor"
-            autocomplete="off"
-          >
+          <input type="text" class="massa-valor-input" id="massa-val-${key}" inputmode="decimal" placeholder="valor" autocomplete="off">
           <label class="massa-foto-label" title="Anexar foto">
             📷
             <input type="file" accept="image/*" id="massa-foto-${key}" class="massa-foto-input" onchange="massaFotoPreview(this,'${key}')">
@@ -1349,8 +1311,6 @@ async function massaGerarLinhas() {
   }
 
   el.innerHTML = html || '<p class="empty-msg">Nenhum dia pendente neste intervalo.</p>';
-
-  // Foco no primeiro campo vazio
   const primeiro = el.querySelector('.massa-valor-input');
   if (primeiro) setTimeout(() => primeiro.focus(), 100);
 }
@@ -1358,11 +1318,7 @@ async function massaGerarLinhas() {
 function massaFotoPreview(input, key) {
   const prev = document.getElementById('massa-prev-' + key);
   if (!prev) return;
-  if (input.files[0]) {
-    prev.innerHTML = '<span style="font-size:11px;color:var(--ok)">✓ foto</span>';
-  } else {
-    prev.innerHTML = '';
-  }
+  prev.innerHTML = input.files[0] ? '<span style="font-size:11px;color:var(--ok)">✓ foto</span>' : '';
 }
 
 async function massaSalvar() {
@@ -1370,22 +1326,15 @@ async function massaSalvar() {
   const casas = window._massaCasas ?? 3;
   if (!ctx?.medidor_id) { toast('Nenhum medidor selecionado.', 'warn'); return; }
 
-  const linhas = document.querySelectorAll('.massa-linha[data-dia]');
+  const linhas     = document.querySelectorAll('.massa-linha[data-dia]');
   const paraEnviar = [];
 
   linhas.forEach(linha => {
     const key   = linha.id.replace('massa-linha-', '');
     const valor = document.getElementById('massa-val-' + key)?.value?.trim();
-    if (!valor) return; // pula linhas vazias
-    const foto  = document.getElementById('massa-foto-' + key)?.files[0] || null;
-    paraEnviar.push({
-      dia:   parseInt(linha.dataset.dia),
-      mes:   parseInt(linha.dataset.mes),
-      ano:   parseInt(linha.dataset.ano),
-      valor,
-      foto,
-      key,
-    });
+    if (!valor) return;
+    const foto = document.getElementById('massa-foto-' + key)?.files[0] || null;
+    paraEnviar.push({ dia: parseInt(linha.dataset.dia), mes: parseInt(linha.dataset.mes), ano: parseInt(linha.dataset.ano), valor, foto, key });
   });
 
   if (!paraEnviar.length) { toast('Nenhum valor preenchido.', 'warn'); return; }
@@ -1402,12 +1351,12 @@ async function massaSalvar() {
   for (const item of paraEnviar) {
     try {
       const form = new FormData();
-      form.append('medidor_id',    ctx.medidor_id);
-      form.append('valor',         item.valor);
+      form.append('medidor_id',     ctx.medidor_id);
+      form.append('valor',          item.valor);
       form.append('referencia_dia', item.dia);
       form.append('referencia_mes', item.mes);
       form.append('referencia_ano', item.ano);
-      form.append('metodo',        'MANUAL');
+      form.append('metodo',         'MANUAL');
       if (item.foto) form.append('imagem', item.foto);
 
       await fetch('/api/leituras', {
@@ -1415,19 +1364,14 @@ async function massaSalvar() {
         headers: { Authorization: 'Bearer ' + Auth.token },
         body: form,
       }).then(async r => {
-        if (!r.ok) {
-          const err = await r.json();
-          throw new Error(err.erro || 'Erro ' + r.status);
-        }
+        if (!r.ok) { const err = await r.json(); throw new Error(err.erro || 'Erro ' + r.status); }
         return r.json();
       });
 
-      // Marca linha como salva
       const linha = document.getElementById('massa-linha-' + item.key);
       if (linha) {
         linha.classList.add('massa-linha-ok');
-        linha.querySelector('.massa-linha-campos').innerHTML =
-          '<span class="badge badge-ok">✓ salvo</span>';
+        linha.querySelector('.massa-linha-campos').innerHTML = '<span class="badge badge-ok">✓ salvo</span>';
       }
       ok++;
     } catch (err) {
@@ -1454,7 +1398,7 @@ async function massaSalvar() {
 
 // ── ADMIN TABS ────────────────────────────────────────
 function switchTab(name) {
-  const tabs  = ['condos','unidades','medidores','users'];
+  const tabs = ['condos','unidades','medidores','users'];
   document.querySelectorAll('.admin-tab').forEach((t, i) => t.classList.toggle('active', tabs[i] === name));
   document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
@@ -1472,13 +1416,13 @@ async function carregarCondosAdmin() {
   try {
     const [condos, users] = await Promise.all([API.condominios.listar(), API.users.listar()]);
     const gestores = users.filter(u => u.role === 'GESTOR' && u.ativo);
-    const leitores  = users.filter(u => u.role === 'LEITOR'  && u.ativo);
+    const leitores = users.filter(u => u.role === 'LEITOR'  && u.ativo);
 
     if (!condos.length) { el.innerHTML = '<p class="empty-msg">Nenhum condomínio.</p>'; return; }
 
     el.innerHTML = condos.map(c => {
       const optsGestores = gestores.map(g => '<option value="' + g.id + '">' + g.nome + ' (' + g.email + ')</option>').join('');
-      const optsLeitores  = leitores.map(l  => '<option value="' + l.id  + '">' + l.nome  + ' (' + l.email  + ')</option>').join('');
+      const optsLeitores = leitores.map(l => '<option value="' + l.id + '">' + l.nome + ' (' + l.email + ')</option>').join('');
       return '<div class="condo-card" id="condo-card-' + c.id + '">' +
         '<div class="list-item condo-header" onclick="toggleCondo(\'' + c.id + '\')">' +
         '<div class="list-item-info"><span class="list-item-title">' + c.nome + '</span>' +
@@ -1502,20 +1446,14 @@ async function carregarCondosAdmin() {
         '<button class="btn-primary btn-sm" onclick="adicionarLeitor(\'' + c.id + '\')">+ Vincular</button></div></div>' +
         '</div></div>';
     }).join('');
-    el.querySelectorAll('.btn-edit-condo').forEach(btn => {
-      btn.addEventListener('click', e => {
-        e.stopPropagation();
-        editarCondominio(btn.dataset.id, btn.dataset.nome, btn.dataset.end, btn.dataset.cid);
-      });
-    });
   } catch { el.innerHTML = '<p class="error-msg">Erro ao carregar.</p>'; }
 }
 
 async function preencherSelectCondos() {
   try {
     const condos = await API.condominios.listar();
-    const opts = condos.map(c => '<option value="' + c.id + '">' + c.nome + '</option>').join('');
-    ['unidade-condo-id', 'medidor-condo-id', 'filtro-unidade-condo', 'filtro-medidor-condo', 'rel-unidade', 'rel-unidade-periodo'].forEach(id => {
+    const opts   = condos.map(c => '<option value="' + c.id + '">' + c.nome + '</option>').join('');
+    ['unidade-condo-id','medidor-condo-id','filtro-unidade-condo','filtro-medidor-condo','rel-unidade','rel-unidade-periodo'].forEach(id => {
       const sel = document.getElementById(id);
       if (!sel) return;
       const placeholder = id.startsWith('filtro') ? 'Selecione um condomínio...' : 'Selecione o condomínio...';
@@ -1573,10 +1511,7 @@ async function carregarLeitoresCondo(condoId) {
 async function carregarUnidadesAdmin(condoId) {
   await preencherSelectCondos();
   const el = document.getElementById('admin-unidades-list');
-  if (!condoId) {
-    el.innerHTML = '<p class="empty-msg">Selecione um condomínio acima para ver as unidades.</p>';
-    return;
-  }
+  if (!condoId) { el.innerHTML = '<p class="empty-msg">Selecione um condomínio acima para ver as unidades.</p>'; return; }
   el.innerHTML = '<p class="loading-msg">Carregando...</p>';
   try {
     const unidades = await API.get('/unidades?condominio_id=' + condoId);
@@ -1588,13 +1523,7 @@ async function carregarUnidadesAdmin(condoId) {
       '</div>' +
       '<div style="display:flex;align-items:center;gap:6px">' +
       '<span class="badge badge-pend">' + (u.medidores?.length || 0) + ' med.</span>' +
-      '<button class="btn-icon btn-edit-unidade" style="padding:4px 8px;font-size:12px"' +
-      ' data-id="' + u.id + '"' +
-      ' data-bloco="' + (u.bloco||'') + '"' +
-      ' data-ident="' + u.identificador + '"' +
-      ' data-empresa="' + (u.empresa||'') + '"' +
-      ' data-condo="' + condoId + '"' +
-      ' title="Editar">✏️</button>' +
+      '<button class="btn-icon btn-edit-unidade" style="padding:4px 8px;font-size:12px" data-id="' + u.id + '" data-bloco="' + (u.bloco||'') + '" data-ident="' + u.identificador + '" data-empresa="' + (u.empresa||'') + '" data-condo="' + condoId + '" title="Editar">✏️</button>' +
       '</div></div>'
     ).join('') || '<p class="empty-msg">Nenhuma unidade neste condomínio.</p>';
     el.querySelectorAll('.btn-edit-unidade').forEach(btn => {
@@ -1605,10 +1534,7 @@ async function carregarUnidadesAdmin(condoId) {
 
 async function carregarMedidoresAdmin(condoId) {
   const el = document.getElementById('admin-medidores-list');
-  if (!condoId) {
-    el.innerHTML = '<p class="empty-msg">Selecione um condomínio acima para ver os medidores.</p>';
-    return;
-  }
+  if (!condoId) { el.innerHTML = '<p class="empty-msg">Selecione um condomínio acima para ver os medidores.</p>'; return; }
   el.innerHTML = '<p class="loading-msg">Carregando...</p>';
   try {
     const medidores = await API.get('/medidores?condominio_id=' + condoId);
@@ -1621,14 +1547,7 @@ async function carregarMedidoresAdmin(condoId) {
       '</div>' +
       '<div style="display:flex;align-items:center;gap:6px">' +
       '<span class="badge badge-role-leitor">' + (tipoLabel[m.tipo] || m.tipo) + '</span>' +
-      '<button class="btn-icon btn-edit-medidor" style="padding:4px 8px;font-size:12px"' +
-      ' data-id="' + m.id + '"' +
-      ' data-tipo="' + m.tipo + '"' +
-      ' data-serie="' + (m.numero_serie||'') + '"' +
-      ' data-local="' + (m.localizacao||'') + '"' +
-      ' data-casas="' + (m.casas_decimais||3) + '"' +
-      ' data-condo="' + condoId + '"' +
-      ' title="Editar">✏️</button>' +
+      '<button class="btn-icon btn-edit-medidor" style="padding:4px 8px;font-size:12px" data-id="' + m.id + '" data-tipo="' + m.tipo + '" data-serie="' + (m.numero_serie||'') + '" data-local="' + (m.localizacao||'') + '" data-casas="' + (m.casas_decimais||3) + '" data-condo="' + condoId + '" title="Editar">✏️</button>' +
       '</div></div>'
     ).join('') || '<p class="empty-msg">Nenhum medidor neste condomínio.</p>';
     el.querySelectorAll('.btn-edit-medidor').forEach(btn => {
@@ -1643,17 +1562,10 @@ async function carregarUsersAdmin() {
     const users = await API.users.listar();
     el.innerHTML = users.map(u =>
       '<div class="list-item">' +
-      '<div class="list-item-info">' +
-      '<span class="list-item-title">' + u.nome + '</span>' +
-      '<span class="list-item-sub">' + u.email + '</span>' +
-      '</div>' +
+      '<div class="list-item-info"><span class="list-item-title">' + u.nome + '</span><span class="list-item-sub">' + u.email + '</span></div>' +
       '<div style="display:flex;align-items:center;gap:6px">' +
       '<span class="badge badge-role-' + u.role.toLowerCase() + '">' + u.role + '</span>' +
-      '<button class="btn-icon btn-edit-user" style="padding:4px 8px;font-size:12px"' +
-      ' data-id="' + u.id + '"' +
-      ' data-nome="' + u.nome + '"' +
-      ' data-role="' + u.role + '"' +
-      ' title="Editar">✏️</button>' +
+      '<button class="btn-icon btn-edit-user" style="padding:4px 8px;font-size:12px" data-id="' + u.id + '" data-nome="' + u.nome + '" data-role="' + u.role + '" title="Editar">✏️</button>' +
       '</div></div>'
     ).join('') || '<p class="empty-msg">Nenhum usuário.</p>';
     el.querySelectorAll('.btn-edit-user').forEach(btn => {
@@ -1682,9 +1594,9 @@ function fecharModal() {
 
 // ── GESTORES / LEITORES ───────────────────────────────
 async function adicionarGestor(condoId) {
-  const sel = document.getElementById('select-gestor-' + condoId);
+  const sel    = document.getElementById('select-gestor-' + condoId);
   const userId = sel.value;
-  const nome = sel.options[sel.selectedIndex]?.text || '';
+  const nome   = sel.options[sel.selectedIndex]?.text || '';
   if (!userId) { toast('Selecione um gestor.', 'warn'); return; }
   const condoEl = document.querySelector('#condo-card-' + condoId + ' .list-item-title');
   abrirModal({ icone: '🔗', titulo: 'Vincular gestor',
@@ -1709,9 +1621,9 @@ async function removerGestor(condoId, userId, nomeGestor) {
 }
 
 async function adicionarLeitor(condoId) {
-  const sel = document.getElementById('select-leitor-' + condoId);
+  const sel    = document.getElementById('select-leitor-' + condoId);
   const userId = sel.value;
-  const nome = sel.options[sel.selectedIndex]?.text || '';
+  const nome   = sel.options[sel.selectedIndex]?.text || '';
   if (!userId) { toast('Selecione um leitor.', 'warn'); return; }
   const condoEl = document.querySelector('#condo-card-' + condoId + ' .list-item-title');
   abrirModal({ icone: '🔗', titulo: 'Vincular leitor',
@@ -1770,7 +1682,7 @@ document.getElementById('form-novo-user')?.addEventListener('submit', async e =>
 
 document.getElementById('medidor-condo-id')?.addEventListener('change', async function() {
   const condoId = this.value;
-  const sel = document.getElementById('medidor-unidade-id');
+  const sel     = document.getElementById('medidor-unidade-id');
   sel.innerHTML = '<option value="">Carregando...</option>';
   if (!condoId) { sel.innerHTML = '<option value="">Selecione a unidade...</option>'; return; }
   try {
@@ -1837,14 +1749,14 @@ async function gerarRelatorio(formato) {
     const ano = document.getElementById('rel-ano').value;
     url = '/api/relatorios/mensal?condominio_id=' + condoId + '&mes=' + mes + '&ano=' + ano + '&formato=' + formato;
   } else if (tipo === 'extrato') {
-    const mes = document.getElementById('rel-mes').value;
-    const ano = document.getElementById('rel-ano').value;
+    const mes       = document.getElementById('rel-mes').value;
+    const ano       = document.getElementById('rel-ano').value;
     const unidadeId = document.getElementById('rel-unidade').value;
     url = '/api/relatorios/extrato?condominio_id=' + condoId + '&mes=' + mes + '&ano=' + ano + '&formato=' + formato;
     if (unidadeId) url += '&unidade_id=' + unidadeId;
   } else {
-    const ini = document.getElementById('rel-inicio').value;
-    const fim = document.getElementById('rel-fim').value;
+    const ini         = document.getElementById('rel-inicio').value;
+    const fim         = document.getElementById('rel-fim').value;
     if (!ini || !fim) { toast('Preencha as datas.', 'warn'); return; }
     const unidPeriodo = document.getElementById('rel-unidade-periodo')?.value || '';
     url = '/api/relatorios/periodo?condominio_id=' + condoId + '&data_inicio=' + ini + '&data_fim=' + fim + '&formato=' + formato;
@@ -1855,10 +1767,10 @@ async function gerarRelatorio(formato) {
     try {
       const resp = await fetch(url, { headers: { Authorization: 'Bearer ' + Auth.token } });
       if (!resp.ok) { toast('Erro ao gerar arquivo.', 'erro'); return; }
-      const blob = await resp.blob();
+      const blob   = await resp.blob();
       const objUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = objUrl;
+      const link   = document.createElement('a');
+      link.href     = objUrl;
       link.download = formato === 'csv' ? 'relatorio.csv' : 'relatorio.pdf';
       link.click();
       URL.revokeObjectURL(objUrl);
@@ -1874,17 +1786,50 @@ async function gerarRelatorio(formato) {
     const data = await resp.json();
     if (!resp.ok) { el.innerHTML = '<p class="error-msg">' + (data.erro || 'Erro') + '</p>'; return; }
 
-    if (tipo === 'mensal') renderRelatorioMensal(el, data);
-    else if (tipo === 'extrato') renderRelatorioExtrato(el, data);
-    else renderRelatorioPeriodo(el, data);
+    if (tipo === 'mensal')        renderRelatorioMensal(el, data);
+    else if (tipo === 'extrato')  renderRelatorioExtrato(el, data);
+    else                          renderRelatorioPeriodo(el, data);
   } catch (err) {
     el.innerHTML = '<p class="error-msg">' + err.message + '</p>';
   }
 }
 
+// ── HELPER: card de área comum ────────────────────────
+function renderAreaComumCard(areaComum) {
+  if (!areaComum) return '';
+  const casas    = areaComum.casas_decimais ?? 2;
+  const negativo = areaComum.negativo;
+  const corValor = negativo ? 'var(--danger)' : 'var(--blue)';
+  const alerta   = negativo
+    ? '<div style="font-size:11px;color:var(--danger);margin-top:8px">⚠ Valor negativo — verifique as leituras do medidor geral</div>'
+    : '';
+
+  return '<div class="rel-area-comum">' +
+    '<div class="rel-area-comum-header">Consumo de área comum</div>' +
+    '<div class="rel-area-comum-grid">' +
+      '<div class="rel-area-comum-item">' +
+        '<div class="rel-area-comum-val">' + fmtValor(areaComum.consumo_geral, casas) + ' m³</div>' +
+        '<div class="rel-area-comum-label">Medidor geral</div>' +
+      '</div>' +
+      '<div class="rel-area-comum-sep">−</div>' +
+      '<div class="rel-area-comum-item">' +
+        '<div class="rel-area-comum-val">' + fmtValor(areaComum.consumo_privativo, casas) + ' m³</div>' +
+        '<div class="rel-area-comum-label">Soma privativos</div>' +
+      '</div>' +
+      '<div class="rel-area-comum-sep">=</div>' +
+      '<div class="rel-area-comum-item">' +
+        '<div class="rel-area-comum-val" style="color:' + corValor + ';font-size:22px">' +
+          fmtValor(areaComum.consumo_area_comum, casas) + ' m³' +
+        '</div>' +
+        '<div class="rel-area-comum-label">Área comum</div>' +
+      '</div>' +
+    '</div>' +
+    alerta +
+  '</div>';
+}
+
 function renderRelatorioMensal(el, data) {
-  const nomeMes = new Date(data.ano, data.mes - 1).toLocaleString('pt-BR', { month: 'long' });
-  // casas para os cards de resumo — vem do controller (max das casas do condomínio)
+  const nomeMes     = new Date(data.ano, data.mes - 1).toLocaleString('pt-BR', { month: 'long' });
   const casasResumo = data.resumo.casas_decimais ?? 2;
 
   let html = '<div class="rel-header"><h3>' + nomeMes + ' ' + data.ano + ' — ' + data.condominio + '</h3></div>';
@@ -1895,17 +1840,19 @@ function renderRelatorioMensal(el, data) {
     relCard('Alertas', data.resumo.total_alertas, data.resumo.total_alertas > 0 ? 'warn' : '') +
     '</div>';
 
+  html += renderAreaComumCard(data.area_comum);
+
   html += '<div class="rel-table-wrap"><table class="rel-table">' +
     '<thead><tr><th>Unidade</th><th>Empresa</th><th>Dias</th><th>1ª Leitura</th><th>Última</th><th>Consumo m³</th><th>Var%</th></tr></thead><tbody>';
 
   data.leituras.forEach(l => {
-    // cada linha usa suas próprias casas_decimais
-    const casas  = l.casas_decimais ?? 2;
-    const alerta = l.alerta ? ' rel-alerta' : '';
-    const varStr = l.variacao_pct !== null ? (l.variacao_pct >= 0 ? '+' : '') + l.variacao_pct + '%' : '—';
-    html += '<tr class="' + alerta + '">' +
+    const casas      = l.casas_decimais ?? 2;
+    const alerta     = l.alerta ? ' rel-alerta' : '';
+    const varStr     = l.variacao_pct !== null ? (l.variacao_pct >= 0 ? '+' : '') + l.variacao_pct + '%' : '—';
+    const geralStyle = !l.empresa ? ' style="background:var(--blue-xlight)"' : '';
+    html += '<tr class="' + alerta + '"' + geralStyle + '>' +
       '<td><strong>' + (l.bloco ? l.bloco + ' · ' : '') + l.unidade + '</strong></td>' +
-      '<td>' + (l.empresa || '—') + '</td>' +
+      '<td>' + (l.empresa || '<span style="color:var(--text3);font-style:italic">Geral</span>') + '</td>' +
       '<td>' + l.dias_lidos + '</td>' +
       '<td>' + fmtValor(l.primeira_leitura, casas) + '</td>' +
       '<td>' + fmtValor(l.ultima_leitura,   casas) + '</td>' +
@@ -1917,10 +1864,8 @@ function renderRelatorioMensal(el, data) {
   el.innerHTML = html;
 }
 
-
 function renderRelatorioPeriodo(el, data) {
-  const r = data.resumo || {};
-  // casas para os cards de resumo — vem do controller (max das casas do condomínio)
+  const r           = data.resumo || {};
   const casasResumo = r.casas_decimais ?? 2;
 
   let html = '<div class="rel-header"><h3>Leituras — ' + data.condominio + '</h3>' +
@@ -1933,6 +1878,8 @@ function renderRelatorioPeriodo(el, data) {
     relCard('Alertas',            r.total_alertas  || 0, r.total_alertas > 0 ? 'warn' : '') +
     '</div>';
 
+  html += renderAreaComumCard(data.area_comum);
+
   if (data.acumulado && data.acumulado.length) {
     html += '<div style="margin-bottom:16px">' +
       '<div class="section-title" style="padding:0 0 8px;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:1px">Acumulado por unidade</div>' +
@@ -1940,10 +1887,11 @@ function renderRelatorioPeriodo(el, data) {
       '<thead><tr><th>Unidade</th><th>Empresa</th><th>Consumo no período</th></tr></thead><tbody>';
 
     data.acumulado.forEach(a => {
-      // cada unidade usa suas próprias casas_decimais
-      const casas = a.casas_decimais ?? 2;
-      html += '<tr><td><strong>' + (a.bloco ? a.bloco + ' · ' : '') + a.unidade + '</strong></td>' +
-        '<td>' + (a.empresa || '—') + '</td>' +
+      const casas      = a.casas_decimais ?? 2;
+      const geralStyle = !a.empresa ? ' style="background:var(--blue-xlight)"' : '';
+      html += '<tr' + geralStyle + '>' +
+        '<td><strong>' + (a.bloco ? a.bloco + ' · ' : '') + a.unidade + '</strong></td>' +
+        '<td>' + (a.empresa || '<span style="color:var(--text3);font-style:italic">Geral</span>') + '</td>' +
         '<td><strong>' + fmtValor(a.consumo, casas) + '</strong></td></tr>';
     });
 
@@ -1954,24 +1902,24 @@ function renderRelatorioPeriodo(el, data) {
     '<thead><tr><th>Unidade</th><th>Empresa</th><th>Data</th><th>Valor m³</th><th>Variação</th><th>Leitor</th><th>Foto</th></tr></thead><tbody>';
 
   data.leituras.forEach(l => {
-    // cada leitura usa suas próprias casas_decimais
-    const casas   = l.casas_decimais ?? 2;
-    const alerta  = l.alerta ? ' rel-alerta' : '';
-    const dataStr = diaSemana(l.referencia_dia, l.referencia_mes, l.referencia_ano) + ' ' +
-                    String(l.referencia_dia).padStart(2,'0') + '/' +
-                    String(l.referencia_mes).padStart(2,'0') + '/' + l.referencia_ano;
-    const varNum  = l.variacao !== null ? parseFloat(l.variacao) : null;
-    const varStr  = varNum !== null ? fmtVar(varNum, casas) : '—';
+    const casas    = l.casas_decimais ?? 2;
+    const alerta   = l.alerta ? ' rel-alerta' : '';
+    const dataStr  = diaSemana(l.referencia_dia, l.referencia_mes, l.referencia_ano) + ' ' +
+                     String(l.referencia_dia).padStart(2,'0') + '/' +
+                     String(l.referencia_mes).padStart(2,'0') + '/' + l.referencia_ano;
+    const varNum   = l.variacao !== null ? parseFloat(l.variacao) : null;
+    const varStr   = varNum !== null ? fmtVar(varNum, casas) : '—';
     const varStyle = l.alerta
       ? 'class="text-danger"'
       : (varNum !== null && varNum > 0 ? 'style="color:var(--ok);font-weight:600"' : '');
-    const fotoHtml = l.foto_url
+    const fotoHtml    = l.foto_url
       ? '<a href="#" onclick="abrirFoto(\'' + l.foto_url + '\', event);return false;" style="color:var(--blue)">📷</a>'
       : '—';
+    const geralStyle  = !l.empresa_snapshot ? ' style="background:var(--blue-xlight)"' : '';
 
-    html += '<tr class="' + alerta + '">' +
+    html += '<tr class="' + alerta + '"' + geralStyle + '>' +
       '<td><strong>' + (l.bloco ? l.bloco + ' · ' : '') + l.unidade + '</strong></td>' +
-      '<td>' + (l.empresa_snapshot || '—') + '</td>' +
+      '<td>' + (l.empresa_snapshot || '<span style="color:var(--text3);font-style:italic">Geral</span>') + '</td>' +
       '<td>' + dataStr + '</td>' +
       '<td>' + fmtValor(l.valor, casas) + '</td>' +
       '<td ' + varStyle + '>' + varStr + '</td>' +
@@ -1983,11 +1931,9 @@ function renderRelatorioPeriodo(el, data) {
   el.innerHTML = html;
 }
 
-
 function renderRelatorioExtrato(el, data) {
   const nomeMes = new Date(data.ano, data.mes - 1).toLocaleString('pt-BR', { month: 'long' });
-  let html = '<div class="rel-header"><h3>Extrato — ' + data.condominio + '</h3>' +
-    '<p>' + nomeMes + ' ' + data.ano + '</p></div>';
+  let html = '<div class="rel-header"><h3>Extrato — ' + data.condominio + '</h3><p>' + nomeMes + ' ' + data.ano + '</p></div>';
 
   data.extratos.forEach(e => {
     const casas  = e.casas_decimais ?? 2;
@@ -2011,7 +1957,7 @@ function renderRelatorioExtrato(el, data) {
       } else {
         html += '<tr>' +
           '<td>' + l.data + ' ' + l.dia_semana + '</td>' +
-          '<td><strong>' + fmtValor(l.valor,   casas) + '</strong></td>' +
+          '<td><strong>' + fmtValor(l.valor, casas) + '</strong></td>' +
           '<td>' + (l.consumo !== null ? fmtVar(l.consumo, casas) : '—') + '</td>' +
           '<td>' + (l.leitor || '—') + '</td>' +
           '<td>' + (l.tem_foto
@@ -2023,15 +1969,13 @@ function renderRelatorioExtrato(el, data) {
 
     html += '</tbody><tfoot><tr style="background:var(--blue)">' +
       '<td colspan="2" style="color:white;font-weight:700;padding:8px 10px">CONSUMO TOTAL</td>' +
-      '<td style="color:white;font-weight:700;font-family:var(--mono)">' +
-      fmtValor(e.consumo_total, casas) + ' m³</td>' +
+      '<td style="color:white;font-weight:700;font-family:var(--mono)">' + fmtValor(e.consumo_total, casas) + ' m³</td>' +
       '<td colspan="2" style="color:rgba(255,255,255,.6);font-size:11px">' + e.dias_lidos + ' dias lidos</td>' +
       '</tr></tfoot></table></div></div>';
   });
 
   el.innerHTML = html || '<p class="empty-msg">Nenhuma leitura no período.</p>';
 }
-
 
 function relCard(label, valor, tipo) {
   const bg    = tipo === 'warn' ? 'var(--warn-bg)' : 'var(--blue-xlight)';
@@ -2071,14 +2015,8 @@ function editarCondominio(id, nome, endereco, cidade) {
     '<div class="field"><label>Endereço</label><input id="e-condo-end" value="' + (endereco||'') + '"></div>' +
     '<div class="field"><label>Cidade</label><input id="e-condo-cid" value="' + (cidade||'') + '"></div>',
     async () => {
-      await API.condominios.editar(id, {
-        nome:     document.getElementById('e-condo-nome').value,
-        endereco: document.getElementById('e-condo-end').value,
-        cidade:   document.getElementById('e-condo-cid').value,
-      });
-      toast('Condomínio atualizado!', 'ok');
-      carregarCondosAdmin();
-      preencherSelectCondos();
+      await API.condominios.editar(id, { nome: document.getElementById('e-condo-nome').value, endereco: document.getElementById('e-condo-end').value, cidade: document.getElementById('e-condo-cid').value });
+      toast('Condomínio atualizado!', 'ok'); carregarCondosAdmin(); preencherSelectCondos();
     }
   );
 }
@@ -2089,13 +2027,8 @@ function editarUnidade(id, bloco, ident, empresa, condoFiltro) {
     '<div class="field"><label>Identificador</label><input id="e-u-ident" value="' + ident + '" required></div>' +
     '<div class="field"><label>Empresa ocupante</label><input id="e-u-emp" value="' + (empresa||'') + '"></div>',
     async () => {
-      await API.put('/unidades/' + id, {
-        bloco:         document.getElementById('e-u-bloco').value,
-        identificador: document.getElementById('e-u-ident').value,
-        empresa:       document.getElementById('e-u-emp').value,
-      });
-      toast('Unidade atualizada!', 'ok');
-      carregarUnidadesAdmin(condoFiltro);
+      await API.put('/unidades/' + id, { bloco: document.getElementById('e-u-bloco').value, identificador: document.getElementById('e-u-ident').value, empresa: document.getElementById('e-u-emp').value });
+      toast('Unidade atualizada!', 'ok'); carregarUnidadesAdmin(condoFiltro);
     }
   );
 }
@@ -2111,14 +2044,8 @@ function editarMedidor(id, tipo, serie, local, casas, condoFiltro) {
     '<div class="field"><label>Nº de série</label><input id="e-m-serie" value="' + (serie||'') + '"></div>' +
     '<div class="field"><label>Localização</label><input id="e-m-local" value="' + (local||'') + '"></div>',
     async () => {
-      await API.put('/medidores/' + id, {
-        tipo:           document.getElementById('e-m-tipo').value,
-        casas_decimais: parseInt(document.getElementById('e-m-casas').value),
-        numero_serie:   document.getElementById('e-m-serie').value,
-        localizacao:    document.getElementById('e-m-local').value,
-      });
-      toast('Medidor atualizado!', 'ok');
-      carregarMedidoresAdmin(condoFiltro);
+      await API.put('/medidores/' + id, { tipo: document.getElementById('e-m-tipo').value, casas_decimais: parseInt(document.getElementById('e-m-casas').value), numero_serie: document.getElementById('e-m-serie').value, localizacao: document.getElementById('e-m-local').value });
+      toast('Medidor atualizado!', 'ok'); carregarMedidoresAdmin(condoFiltro);
     }
   );
 }
@@ -2131,15 +2058,11 @@ function editarUsuario(id, nome, role) {
     '</select></div>' +
     '<div class="field"><label>Nova senha (deixe vazio para manter)</label><input type="password" id="e-user-senha" placeholder="opcional"></div>',
     async () => {
-      const data = {
-        nome:  document.getElementById('e-user-nome').value,
-        role:  document.getElementById('e-user-role').value,
-      };
+      const data  = { nome: document.getElementById('e-user-nome').value, role: document.getElementById('e-user-role').value };
       const senha = document.getElementById('e-user-senha').value;
       if (senha) data.senha = senha;
       await API.users.editar(id, data);
-      toast('Usuário atualizado!', 'ok');
-      carregarUsersAdmin();
+      toast('Usuário atualizado!', 'ok'); carregarUsersAdmin();
     }
   );
 }
@@ -2150,8 +2073,36 @@ async function abrirFoto(fotoUrl, event) {
   if (url) window.open(url, '_blank');
 }
 
+// ── ATALHO: lançamento em massa ───────────────────────
+async function irLancamentoMassa() {
+  if (!Auth.canManage()) return;
+
+  const condos = _dashCondominios && _dashCondominios.length ? _dashCondominios : null;
+
+  if (condos && condos.length === 1) {
+    const condo = condos[0];
+    try {
+      const meds = await API.get('/medidores?condominio_id=' + condo.id);
+      if (meds.length > 0) {
+        const m     = meds[0];
+        const label = (m.unidade?.bloco ? m.unidade.bloco + ' · ' : '') +
+                      (m.unidade?.identificador || 'Medidor') +
+                      (m.unidade?.empresa ? ' — ' + m.unidade.empresa : '');
+
+        window._historicoCtx = { medidor_id: m.id, medidor_label: label, condominio_id: condo.id, condominio_nome: condo.nome };
+        Router.go('historico', { medidor_id: m.id, medidor_label: label, condominio_id: condo.id, condominio_nome: condo.nome });
+        setTimeout(() => _historicoSwitchAba('massa'), 300);
+        return;
+      }
+    } catch {}
+  }
+
+  Router.go('historico');
+  setTimeout(() => { window._historicoAbaInicial = 'massa'; }, 100);
+}
+
 // ── GLOBAIS ───────────────────────────────────────────
-window.Router                   = Router;
+window.Router                    = Router;
 window.abrirHistorico            = abrirHistorico;
 window.massaGerarLinhas          = massaGerarLinhas;
 window.massaSalvar               = massaSalvar;
@@ -2164,91 +2115,40 @@ window.historicoFecharEdicao     = historicoFecharEdicao;
 window.historicoSalvarEdicao     = historicoSalvarEdicao;
 window.historicoConfirmarExclusao = historicoConfirmarExclusao;
 window._historicoCarregar        = _historicoCarregar;
-window.Auth                     = Auth;
-window.switchTab                = switchTab;
-window.switchCondoTab           = switchCondoTab;
-window.toggleCondo              = toggleCondo;
-window.abrirLeitura             = abrirLeitura;
-window.mostrarLeituraExistente  = mostrarLeituraExistente;
-window.iniciarEdicao            = iniciarEdicao;
-window.confirmarExclusao        = confirmarExclusao;
-window.adicionarGestor          = adicionarGestor;
-window.removerGestor            = removerGestor;
-window.adicionarLeitor          = adicionarLeitor;
-window.removerLeitor            = removerLeitor;
-window.fecharModal              = fecharModal;
-window.voltarDeLeitura          = voltarDeLeitura;
-window.carregarUnidadesAdmin    = carregarUnidadesAdmin;
-window.carregarMedidoresAdmin   = carregarMedidoresAdmin;
-window.toggleAccordion          = toggleAccordion;
-window.alternarFiltrosRelatorio = alternarFiltrosRelatorio;
-window.gerarRelatorio           = gerarRelatorio;
-window.fecharModalEdit          = fecharModalEdit;
-window.editarCondominio         = editarCondominio;
-window.editarUnidade            = editarUnidade;
-window.editarMedidor            = editarMedidor;
-window.editarUsuario            = editarUsuario;
-window.atualizarGraficoConsumo  = atualizarGraficoConsumo;
-window.atualizarGraficoPeriodo  = atualizarGraficoPeriodo;
-window.irLancamentoMassa = irLancamentoMassa
-window.irRelatorio              = function(tipo) { Router.go('relatorio'); setTimeout(() => { const sel = document.getElementById('rel-tipo'); if (sel) { sel.value = tipo; alternarFiltrosRelatorio(); } }, 100); };
-
-async function irLancamentoMassa() {
-  if (!Auth.canManage()) return;
-
-  // Se já temos os condomínios carregados no dashboard, usa direto
-  const condos = _dashCondominios && _dashCondominios.length
-    ? _dashCondominios
-    : null;
-
-  if (condos && condos.length === 1) {
-    // Um único condomínio — pré-seleciona e vai direto pra aba massa
-    const condo = condos[0];
-
-    // Busca medidores do condomínio para montar o contexto
-    try {
-      const meds = await API.get('/medidores?condominio_id=' + condo.id);
-      if (meds.length > 0) {
-        // Usa o primeiro medidor como entrada (o usuário troca depois)
-        const m     = meds[0];
-        const label = (m.unidade?.bloco ? m.unidade.bloco + ' · ' : '') +
-                      (m.unidade?.identificador || 'Medidor') +
-                      (m.unidade?.empresa ? ' — ' + m.unidade.empresa : '');
-
-        window._historicoCtx = {
-          medidor_id:      m.id,
-          medidor_label:   label,
-          condominio_id:   condo.id,
-          condominio_nome: condo.nome,
-        };
-
-        Router.go('historico', {
-          medidor_id:      m.id,
-          medidor_label:   label,
-          condominio_id:   condo.id,
-          condominio_nome: condo.nome,
-        });
-
-        // Abre direto na aba de massa após a view carregar
-        setTimeout(() => _historicoSwitchAba('massa'), 300);
-        return;
-      }
-    } catch {}
-  }
-
-  // Mais de 1 condomínio ou falha: abre seleção normal do histórico
-  Router.go('historico');
-  // Após carregar a view, muda a aba para massa automaticamente
-  // O usuário seleciona o condomínio+medidor e já cai na aba certa
+window.Auth                      = Auth;
+window.switchTab                 = switchTab;
+window.switchCondoTab            = switchCondoTab;
+window.toggleCondo               = toggleCondo;
+window.abrirLeitura              = abrirLeitura;
+window.mostrarLeituraExistente   = mostrarLeituraExistente;
+window.iniciarEdicao             = iniciarEdicao;
+window.confirmarExclusao         = confirmarExclusao;
+window.adicionarGestor           = adicionarGestor;
+window.removerGestor             = removerGestor;
+window.adicionarLeitor           = adicionarLeitor;
+window.removerLeitor             = removerLeitor;
+window.fecharModal               = fecharModal;
+window.voltarDeLeitura           = voltarDeLeitura;
+window.carregarUnidadesAdmin     = carregarUnidadesAdmin;
+window.carregarMedidoresAdmin    = carregarMedidoresAdmin;
+window.toggleAccordion           = toggleAccordion;
+window.alternarFiltrosRelatorio  = alternarFiltrosRelatorio;
+window.gerarRelatorio            = gerarRelatorio;
+window.fecharModalEdit           = fecharModalEdit;
+window.editarCondominio          = editarCondominio;
+window.editarUnidade             = editarUnidade;
+window.editarMedidor             = editarMedidor;
+window.editarUsuario             = editarUsuario;
+window.atualizarGraficoConsumo   = atualizarGraficoConsumo;
+window.atualizarGraficoPeriodo   = atualizarGraficoPeriodo;
+window.irLancamentoMassa         = irLancamentoMassa;
+window.irRelatorio               = function(tipo) {
+  Router.go('relatorio');
   setTimeout(() => {
-    const abasEl = document.getElementById('historico-abas');
-    // Guarda a preferência para quando o medidor for selecionado
-    window._historicoAbaInicial = 'massa';
+    const sel = document.getElementById('rel-tipo');
+    if (sel) { sel.value = tipo; alternarFiltrosRelatorio(); }
   }, 100);
-}
-
-
-
+};
 window.abrirFoto = abrirFoto;
 
 document.getElementById('btn-logout')?.addEventListener('click', Auth.logout);

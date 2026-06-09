@@ -2,3 +2,5 @@
 .env.example
 node_modules/
 uploads/gcs-credentials.json
+uploads/
+gcs-credentials.json

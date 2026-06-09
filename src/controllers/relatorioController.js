@@ -17,6 +17,15 @@ function calcVariacao(atual, anterior) {
   return +(parseFloat(atual) - parseFloat(anterior)).toFixed(3);
 }
 
+/**
+ * Retorna o maior valor de casas_decimais dentre as linhas.
+ * Usado nos cards de resumo para nunca perder precisão.
+ */
+function maxCasas(linhas, campo = 'casas_decimais') {
+  if (!linhas || !linhas.length) return 2;
+  return linhas.reduce((max, l) => Math.max(max, l[campo] ?? 2), 0);
+}
+
 // ── RELATÓRIO PERÍODO ─────────────────────────────────
 async function periodo(req, res) {
   const { condominio_id, data_inicio, data_fim, formato = 'json' } = req.query;
@@ -88,7 +97,7 @@ async function periodo(req, res) {
     const varPct   = media && media > 0 ? ((variacao / media) * 100) : null;
     const alerta   = varPct !== null && Math.abs(varPct) > THRESHOLD;
 
-    const casas = l.medidor.casas_decimais ?? 3;
+    const casas = l.medidor.casas_decimais ?? 2;
     linhas.push({
       medidor_id:       l.medidor_id,
       unidade:          l.medidor.unidade.identificador,
@@ -128,7 +137,7 @@ async function periodo(req, res) {
   const acumuladoPorMedidor = {};
   leituras.forEach(l => {
     if (!acumuladoPorMedidor[l.medidor_id]) {
-      const casas   = l.medidor.casas_decimais ?? 3;
+      const casas   = l.medidor.casas_decimais ?? 2;
       const primeira = primeiraLeituraPorMedidor[l.medidor_id];
       const ultima   = ultimaLeituraPorMedidor[l.medidor_id];
       const consumo  = +(ultima - primeira).toFixed(casas);
@@ -145,15 +154,18 @@ async function periodo(req, res) {
   const acumulado = Object.values(acumuladoPorMedidor)
     .sort((a, b) => b.consumo - a.consumo);
 
+  // Usa o maior número de casas entre todos os medidores para o total
+  const casasTotal = maxCasas(acumulado);
   const consumoTotalPeriodo = +acumulado
     .reduce((s, a) => s + a.consumo, 0)
-    .toFixed(3);
+    .toFixed(casasTotal);
 
   const resumo = {
     total_leituras:      linhas.length,
     total_alertas:       linhas.filter(l => l.alerta).length,
     consumo_total_m3:    consumoTotalPeriodo,
     medidores_com_dados: acumulado.length,
+    casas_decimais:      casasTotal, // ← novo: frontend usa para formatar o resumo
   };
 
   if (formato === 'csv') {
@@ -163,7 +175,6 @@ async function periodo(req, res) {
   }
 
   if (formato === 'pdf') {
-    // Gera gráfico de barras automaticamente para embutir no PDF
     let graficoBuffer = null;
     if (acumulado && acumulado.length > 0) {
       try {
@@ -214,7 +225,7 @@ async function mensal(req, res) {
         unidade:      l.medidor.unidade.identificador,
         bloco:        l.medidor.unidade.bloco,
         empresa:      l.medidor.unidade.empresa,
-        casas:        l.medidor.casas_decimais ?? 3,
+        casas:        l.medidor.casas_decimais ?? 2,
         leituras_ord: [],
       };
     }
@@ -223,15 +234,12 @@ async function mensal(req, res) {
 
   let totalConsumo = 0;
   const linhas = Object.entries(porMedidor).map(([medidor_id, data]) => {
-    const vals    = data.leituras_ord;
+    const vals     = data.leituras_ord;
     const primeira = vals[0];
     const ultima   = vals[vals.length - 1];
+    const consumo  = +Math.max(0, ultima - primeira).toFixed(data.casas);
+    totalConsumo  += consumo;
 
-    // ── Consumo = última − primeira (diferença real do medidor no mês) ──
-    const consumo = +Math.max(0, ultima - primeira).toFixed(data.casas);
-    totalConsumo += consumo;
-
-    // Variação % para alerta: consumo relativo à primeira leitura
     const varPct = primeira > 0 ? +((consumo / primeira) * 100).toFixed(1) : null;
     const alerta = varPct !== null && varPct > THRESHOLD;
 
@@ -240,21 +248,27 @@ async function mensal(req, res) {
       unidade:          data.unidade,
       bloco:            data.bloco,
       empresa:          data.empresa,
+      casas_decimais:   data.casas,
       dias_lidos:       vals.length,
       primeira_leitura: primeira,
       ultima_leitura:   ultima,
       consumo_m3:       consumo,
-      casas_decimais:   data.casas,
       variacao_pct:     varPct,
       alerta,
     };
   }).sort((a, b) => b.consumo_m3 - a.consumo_m3);
 
+  // Usa o maior número de casas entre todos os medidores para total e média
+  const casasTotal = maxCasas(linhas);
+
   const resumo = {
     total_medidores_lidos: linhas.length,
-    consumo_total_m3:      +totalConsumo.toFixed(3),
-    media_consumo_m3:      linhas.length > 0 ? +(totalConsumo / linhas.length).toFixed(3) : 0,
+    consumo_total_m3:      +totalConsumo.toFixed(casasTotal),
+    media_consumo_m3:      linhas.length > 0
+      ? +(totalConsumo / linhas.length).toFixed(casasTotal)
+      : 0,
     total_alertas:         linhas.filter(l => l.alerta).length,
+    casas_decimais:        casasTotal, // ← novo: frontend usa para formatar o resumo
   };
 
   const condo = await prisma.condominio.findUnique({ where: { id: condominio_id }, select: { nome: true } });
@@ -358,6 +372,7 @@ async function extrato(req, res) {
   });
 
   const extratos = medidores.map(m => {
+    const casas = m.casas_decimais ?? 2;
     const leiturasMap = {};
     m.leituras.forEach(l => { leiturasMap[l.referencia_dia] = l; });
 
@@ -372,8 +387,7 @@ async function extrato(req, res) {
 
       if (leitura) {
         const valor   = parseFloat(leitura.valor);
-        // Consumo do dia = valor atual − valor anterior (diferença real)
-        const consumo = valorAnterior !== null ? +(valor - valorAnterior).toFixed(m.casas_decimais) : null;
+        const consumo = valorAnterior !== null ? +(valor - valorAnterior).toFixed(casas) : null;
         if (consumo !== null && consumo > 0) consumoTotal += consumo;
         valorAnterior = valor;
         linhas.push({
@@ -399,8 +413,8 @@ async function extrato(req, res) {
       empresa:        m.unidade.empresa,
       tipo:           m.tipo,
       numero_serie:   m.numero_serie,
-      casas_decimais: m.casas_decimais,
-      consumo_total:  +consumoTotal.toFixed(m.casas_decimais),
+      casas_decimais: casas,
+      consumo_total:  +consumoTotal.toFixed(casas),
       dias_lidos:     m.leituras.length,
       linhas,
     };
@@ -432,7 +446,6 @@ async function consumoGrafico(req, res) {
   const mesInt = parseInt(mes || new Date().getMonth() + 1);
   const anoInt = parseInt(ano || new Date().getFullYear());
 
-  // Filtro de tipo opcional (AGUA, ENERGIA, GAS)
   const wheremedidor = { unidade: { condominio_id } };
   if (tipo && ['AGUA','ENERGIA','GAS'].includes(tipo)) wheremedidor.tipo = tipo;
 
@@ -459,7 +472,7 @@ async function consumoGrafico(req, res) {
         unidade:  l.medidor.unidade.identificador,
         bloco:    l.medidor.unidade.bloco,
         tipo:     l.medidor.tipo,
-        casas:    l.medidor.casas_decimais,
+        casas:    l.medidor.casas_decimais ?? 2,
         primeira: parseFloat(l.valor),
         ultima:   parseFloat(l.valor),
       };
@@ -476,13 +489,10 @@ async function consumoGrafico(req, res) {
     consumo: +Math.max(0, u.ultima - u.primeira).toFixed(u.casas),
   })).filter(d => d.consumo > 0).sort((a, b) => b.consumo - a.consumo);
 
-  // Unidade de medida predominante no resultado
-  const unidadeMedida = tipo === 'ENERGIA' ? 'kWh' : tipo === 'GAS' ? 'm³' : 'm³';
+  const unidadeMedida = tipo === 'ENERGIA' ? 'kWh' : 'm³';
 
   res.json({ mes: mesInt, ano: anoInt, tipo: tipo || 'TODOS', unidade_medida: unidadeMedida, dados });
 }
-
-module.exports = { periodo, mensal, alertas, extrato, consumoGrafico, consumoGraficoPeriodo };
 
 // ── GRÁFICO DE CONSUMO POR PERÍODO ────────────────────
 async function consumoGraficoPeriodo(req, res) {
@@ -498,7 +508,6 @@ async function consumoGraficoPeriodo(req, res) {
   const inicioInt = toInt(new Date(data_inicio));
   const fimInt    = toInt(new Date(data_fim));
 
-  // Filtro de tipo opcional
   const wheremedidor = { unidade: { condominio_id } };
   if (tipo && ['AGUA','ENERGIA','GAS'].includes(tipo)) wheremedidor.tipo = tipo;
 
@@ -538,7 +547,7 @@ async function consumoGraficoPeriodo(req, res) {
       porMedidor[key] = {
         label:    l.medidor.unidade.empresa || l.medidor.unidade.identificador,
         tipo:     l.medidor.tipo,
-        casas:    l.medidor.casas_decimais ?? 3,
+        casas:    l.medidor.casas_decimais ?? 2,
         primeira: parseFloat(l.valor),
         ultima:   parseFloat(l.valor),
       };
@@ -560,3 +569,5 @@ async function consumoGraficoPeriodo(req, res) {
 
   res.json({ data_inicio, data_fim, tipo: tipo || 'TODOS', unidade_medida: unidadeMedida, dados });
 }
+
+module.exports = { periodo, mensal, alertas, extrato, consumoGrafico, consumoGraficoPeriodo };

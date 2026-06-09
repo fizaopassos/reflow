@@ -366,11 +366,18 @@ Views.dashboard = async () => {
   const user = Auth.user;
   document.getElementById('topbar-nome').textContent = user?.nome || '';
 
-  const agora = new Date();
+  const agora    = new Date();
   const mesLabel = agora.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
-  document.getElementById('dashboard-mes').textContent = 'Referência: ' + mesLabel;
+  const mesTexto = 'Referência: ' + mesLabel;
+  document.getElementById('dashboard-mes').textContent         = mesTexto;
   const elMesDesktop = document.getElementById('dashboard-mes-desktop');
-  if (elMesDesktop) elMesDesktop.textContent = 'Referência: ' + mesLabel;
+  if (elMesDesktop) elMesDesktop.textContent = mesTexto;
+
+  // Mostra seções de atalhos conforme role
+  const elLeituras = document.getElementById('dash-atalhos-leituras');
+  const elAdmin    = document.getElementById('dash-atalhos-admin');
+  if (elLeituras) elLeituras.style.display = Auth.canManage() ? '' : 'none';
+  if (elAdmin)    elAdmin.style.display    = Auth.canAdmin()  ? '' : 'none';
 
   const elProg = document.getElementById('dash-progresso');
   elProg.innerHTML = '<p class="loading-msg">Carregando...</p>';
@@ -383,9 +390,9 @@ Views.dashboard = async () => {
     }
 
     const _renderCondo = c => {
-      const pct = c.percentual;
+      const pct        = c.percentual;
       const badgeClass = pct === 100 ? 'badge-ok' : pct > 50 ? 'badge-warn' : 'badge-pend';
-      const nomeEsc = c.nome.replace(/"/g, '');
+      const nomeEsc    = c.nome.replace(/"/g, '');
       return '<div class="card card-condo" onclick="Router.go(&quot;medicoes&quot;,{condominio_id:&quot;' + c.id + '&quot;,nome:&quot;' + nomeEsc + '&quot;})">' +
         '<div class="card-header"><span class="card-title">' + c.nome + '</span>' +
         '<span class="badge ' + badgeClass + '">' + pct + '%</span></div>' +
@@ -396,11 +403,14 @@ Views.dashboard = async () => {
         '<span>Total: ' + c.total_medidores + '</span>' +
         '</div></div>';
     };
+
     const condosHtml = data.condominios.map(_renderCondo).join('');
     elProg.innerHTML = condosHtml;
+
     const elProgMobile = document.getElementById('dash-progresso-mobile');
     if (elProgMobile) elProgMobile.innerHTML = condosHtml;
 
+    // Pendentes (desktop)
     const elPend = document.getElementById('dash-pendentes');
     if (elPend) {
       const comPendentes = data.condominios.filter(c => c.pendentes > 0);
@@ -420,16 +430,17 @@ Views.dashboard = async () => {
       _dashCondominios = data.condominios;
       _popularSelectMes();
 
+      // Select de condomínio no gráfico mensal (se >1)
       if (data.condominios.length > 1) {
-        const opts = data.condominios.map(c => '<option value="' + c.id + '">' + c.nome + '</option>').join('');
+        const opts    = data.condominios.map(c => '<option value="' + c.id + '">' + c.nome + '</option>').join('');
         const condoSel = document.getElementById('dash-grafico-condo');
         if (condoSel) {
           condoSel.innerHTML = '<select id="dash-grafico-condo-sel" style="margin-top:8px;width:100%" onchange="atualizarGraficoConsumo()">' + opts + '</select>';
-          condoSel.style.display = '';
         }
       }
 
       await atualizarGraficoConsumo();
+
       const panelPeriodo = document.getElementById('dash-periodo-painel');
       if (panelPeriodo) panelPeriodo.style.display = '';
       await _iniciarGraficoPeriodo();
@@ -443,6 +454,7 @@ Views.dashboard = async () => {
     elProg.innerHTML = '<p class="error-msg">' + err.message + '</p>';
   }
 };
+
 
 // MEDIÇÕES
 Views.medicoes = async ({ condominio_id, nome }) => {
@@ -1021,7 +1033,7 @@ async function _historicoPopularSeletores() {
       const abasEl = document.getElementById('historico-abas');
       if (abasEl) abasEl.style.display = '';
 
-      _historicoSwitchAba('historico');
+      _historicoSwitchAba(abaAlvo);;
       _historicoPopularFiltros();
       await _historicoCarregar();
     };
@@ -1872,109 +1884,154 @@ async function gerarRelatorio(formato) {
 
 function renderRelatorioMensal(el, data) {
   const nomeMes = new Date(data.ano, data.mes - 1).toLocaleString('pt-BR', { month: 'long' });
+  // casas para os cards de resumo — vem do controller (max das casas do condomínio)
+  const casasResumo = data.resumo.casas_decimais ?? 2;
+
   let html = '<div class="rel-header"><h3>' + nomeMes + ' ' + data.ano + ' — ' + data.condominio + '</h3></div>';
   html += '<div class="rel-resumo">' +
-    relCard('Total consumido', fmtValor(data.resumo.consumo_total_m3, 3) + ' m³') +
-    relCard('Medidores lidos', data.resumo.total_medidores_lidos) +
-    relCard('Média por unidade', fmtValor(data.resumo.media_consumo_m3, 3) + ' m³') +
+    relCard('Total consumido',   fmtValor(data.resumo.consumo_total_m3, casasResumo) + ' m³') +
+    relCard('Medidores lidos',   data.resumo.total_medidores_lidos) +
+    relCard('Média por unidade', fmtValor(data.resumo.media_consumo_m3, casasResumo) + ' m³') +
     relCard('Alertas', data.resumo.total_alertas, data.resumo.total_alertas > 0 ? 'warn' : '') +
     '</div>';
+
   html += '<div class="rel-table-wrap"><table class="rel-table">' +
     '<thead><tr><th>Unidade</th><th>Empresa</th><th>Dias</th><th>1ª Leitura</th><th>Última</th><th>Consumo m³</th><th>Var%</th></tr></thead><tbody>';
+
   data.leituras.forEach(l => {
+    // cada linha usa suas próprias casas_decimais
+    const casas  = l.casas_decimais ?? 2;
     const alerta = l.alerta ? ' rel-alerta' : '';
     const varStr = l.variacao_pct !== null ? (l.variacao_pct >= 0 ? '+' : '') + l.variacao_pct + '%' : '—';
     html += '<tr class="' + alerta + '">' +
       '<td><strong>' + (l.bloco ? l.bloco + ' · ' : '') + l.unidade + '</strong></td>' +
       '<td>' + (l.empresa || '—') + '</td>' +
       '<td>' + l.dias_lidos + '</td>' +
-      '<td>' + fmtValor(l.primeira_leitura, l.casas_decimais ?? 3) + '</td>' +
-      '<td>' + fmtValor(l.ultima_leitura, l.casas_decimais ?? 3) + '</td>' +
-      '<td><strong>' + fmtValor(l.consumo_m3, l.casas_decimais ?? 3) + '</strong></td>' +
+      '<td>' + fmtValor(l.primeira_leitura, casas) + '</td>' +
+      '<td>' + fmtValor(l.ultima_leitura,   casas) + '</td>' +
+      '<td><strong>' + fmtValor(l.consumo_m3, casas) + '</strong></td>' +
       '<td class="' + (l.alerta ? 'text-danger' : '') + '">' + varStr + '</td></tr>';
   });
+
   html += '</tbody></table></div>';
   el.innerHTML = html;
 }
 
+
 function renderRelatorioPeriodo(el, data) {
   const r = data.resumo || {};
+  // casas para os cards de resumo — vem do controller (max das casas do condomínio)
+  const casasResumo = r.casas_decimais ?? 2;
+
   let html = '<div class="rel-header"><h3>Leituras — ' + data.condominio + '</h3>' +
-    '<p>' + new Date(data.data_inicio).toLocaleDateString('pt-BR') + ' a ' + new Date(data.data_fim).toLocaleDateString('pt-BR') + '</p></div>';
+    '<p>' + new Date(data.data_inicio).toLocaleDateString('pt-BR') +
+    ' a ' + new Date(data.data_fim).toLocaleDateString('pt-BR') + '</p></div>';
+
   html += '<div class="rel-resumo">' +
-    relCard('Total de leituras', r.total_leituras || 0) +
-    relCard('Consumo no período', (r.consumo_total_m3 || 0).toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:3}))
-    relCard('Alertas', r.total_alertas || 0, r.total_alertas > 0 ? 'warn' : '') +
+    relCard('Total de leituras',  r.total_leituras || 0) +
+    relCard('Consumo no período', fmtValor(r.consumo_total_m3 || 0, casasResumo) + ' m³') +
+    relCard('Alertas',            r.total_alertas  || 0, r.total_alertas > 0 ? 'warn' : '') +
     '</div>';
+
   if (data.acumulado && data.acumulado.length) {
-    html += '<div style="margin-bottom:16px"><div class="section-title" style="padding:0 0 8px;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:1px">Acumulado por unidade</div>' +
+    html += '<div style="margin-bottom:16px">' +
+      '<div class="section-title" style="padding:0 0 8px;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:1px">Acumulado por unidade</div>' +
       '<div class="rel-table-wrap"><table class="rel-table">' +
       '<thead><tr><th>Unidade</th><th>Empresa</th><th>Consumo no período</th></tr></thead><tbody>';
+
     data.acumulado.forEach(a => {
-      const casas = a.casas_decimais ?? 3;
+      // cada unidade usa suas próprias casas_decimais
+      const casas = a.casas_decimais ?? 2;
       html += '<tr><td><strong>' + (a.bloco ? a.bloco + ' · ' : '') + a.unidade + '</strong></td>' +
         '<td>' + (a.empresa || '—') + '</td>' +
-        '<td><strong>' + a.consumo.toLocaleString('pt-BR', {minimumFractionDigits: casas, maximumFractionDigits: casas}) + '</strong></td></tr>';
+        '<td><strong>' + fmtValor(a.consumo, casas) + '</strong></td></tr>';
     });
+
     html += '</tbody></table></div></div>';
   }
+
   html += '<div class="rel-table-wrap"><table class="rel-table">' +
     '<thead><tr><th>Unidade</th><th>Empresa</th><th>Data</th><th>Valor m³</th><th>Variação</th><th>Leitor</th><th>Foto</th></tr></thead><tbody>';
+
   data.leituras.forEach(l => {
+    // cada leitura usa suas próprias casas_decimais
+    const casas   = l.casas_decimais ?? 2;
     const alerta  = l.alerta ? ' rel-alerta' : '';
-    const casasL  = l.casas_decimais ?? 3;
     const dataStr = diaSemana(l.referencia_dia, l.referencia_mes, l.referencia_ano) + ' ' +
-                    String(l.referencia_dia).padStart(2,'0') + '/' + String(l.referencia_mes).padStart(2,'0') + '/' + l.referencia_ano;
+                    String(l.referencia_dia).padStart(2,'0') + '/' +
+                    String(l.referencia_mes).padStart(2,'0') + '/' + l.referencia_ano;
     const varNum  = l.variacao !== null ? parseFloat(l.variacao) : null;
-    const varStr  = varNum !== null ? fmtVar(varNum, casasL) : '—';
-    const varStyle = l.alerta ? 'class="text-danger"' : (varNum !== null && varNum > 0 ? 'style="color:var(--ok);font-weight:600"' : '');
-    const fotoHtml = l.foto_url ? '<a href="#" onclick="abrirFoto(\'' + l.foto_url + '\', event);return false;" style="color:var(--blue)">📷</a>' : '—';
+    const varStr  = varNum !== null ? fmtVar(varNum, casas) : '—';
+    const varStyle = l.alerta
+      ? 'class="text-danger"'
+      : (varNum !== null && varNum > 0 ? 'style="color:var(--ok);font-weight:600"' : '');
+    const fotoHtml = l.foto_url
+      ? '<a href="#" onclick="abrirFoto(\'' + l.foto_url + '\', event);return false;" style="color:var(--blue)">📷</a>'
+      : '—';
+
     html += '<tr class="' + alerta + '">' +
       '<td><strong>' + (l.bloco ? l.bloco + ' · ' : '') + l.unidade + '</strong></td>' +
       '<td>' + (l.empresa_snapshot || '—') + '</td>' +
       '<td>' + dataStr + '</td>' +
-      '<td>' + fmtValor(l.valor, casasL) + '</td>' +
+      '<td>' + fmtValor(l.valor, casas) + '</td>' +
       '<td ' + varStyle + '>' + varStr + '</td>' +
       '<td>' + l.leitor + '</td>' +
       '<td style="text-align:center">' + fotoHtml + '</td></tr>';
   });
+
   html += '</tbody></table></div>';
   el.innerHTML = html;
 }
 
+
 function renderRelatorioExtrato(el, data) {
   const nomeMes = new Date(data.ano, data.mes - 1).toLocaleString('pt-BR', { month: 'long' });
-  let html = '<div class="rel-header"><h3>Extrato — ' + data.condominio + '</h3><p>' + nomeMes + ' ' + data.ano + '</p></div>';
+  let html = '<div class="rel-header"><h3>Extrato — ' + data.condominio + '</h3>' +
+    '<p>' + nomeMes + ' ' + data.ano + '</p></div>';
+
   data.extratos.forEach(e => {
+    const casas  = e.casas_decimais ?? 2;
     const titulo = (e.bloco ? e.bloco + ' · ' : '') + e.unidade;
+
     html += '<div class="rel-extrato-bloco">' +
       '<div class="rel-extrato-header">' +
-      '<div><strong>' + titulo + '</strong>' + (e.empresa ? ' <span style="color:var(--text2);font-weight:400">— ' + e.empresa + '</span>' : '') + '</div>' +
+      '<div><strong>' + titulo + '</strong>' +
+      (e.empresa ? ' <span style="color:var(--text2);font-weight:400">— ' + e.empresa + '</span>' : '') +
+      '</div>' +
       '<div style="font-size:12px;color:var(--text2)">Série: ' + (e.numero_serie || '—') + '</div>' +
       '</div>';
+
     html += '<div class="rel-table-wrap"><table class="rel-table">' +
       '<thead><tr><th>Data</th><th>Valor m³</th><th>Consumo dia</th><th>Leitor</th><th>Foto</th></tr></thead><tbody>';
+
     e.linhas.forEach(l => {
       if (l.sem_leitura) {
-        html += '<tr style="opacity:.4"><td>' + l.data + '</td><td>' + l.dia_semana + '</td><td colspan="4" style="color:var(--text3);font-style:italic">Sem leitura</td></tr>';
+        html += '<tr style="opacity:.4"><td>' + l.data + ' ' + l.dia_semana +
+          '</td><td colspan="4" style="color:var(--text3);font-style:italic">Sem leitura</td></tr>';
       } else {
         html += '<tr>' +
-          '<td>' + l.data + '</td>' +
-          '<td>' + l.dia_semana + '</td>' +
-          '<td><strong>' + fmtValor(l.valor, e.casas_decimais) + '</strong></td>' +
-          '<td>' + (l.consumo !== null ? fmtVar(l.consumo, e.casas_decimais) : '—') + '</td>' +
+          '<td>' + l.data + ' ' + l.dia_semana + '</td>' +
+          '<td><strong>' + fmtValor(l.valor,   casas) + '</strong></td>' +
+          '<td>' + (l.consumo !== null ? fmtVar(l.consumo, casas) : '—') + '</td>' +
           '<td>' + (l.leitor || '—') + '</td>' +
-          '<td>' + (l.tem_foto ? '<a href="#" onclick="abrirFoto(\'' + l.foto_url + '\', event);return false;" style="color:var(--blue)">📷 ver</a>' : '—') + '</td>'
+          '<td>' + (l.tem_foto
+            ? '<a href="#" onclick="abrirFoto(\'' + l.foto_url + '\', event);return false;" style="color:var(--blue)">📷 ver</a>'
+            : '—') +
+          '</td></tr>';
       }
     });
+
     html += '</tbody><tfoot><tr style="background:var(--blue)">' +
-      '<td colspan="3" style="color:white;font-weight:700;padding:8px 10px">CONSUMO TOTAL</td>' +
-      '<td style="color:white;font-weight:700;font-family:var(--mono)">' + fmtValor(e.consumo_total, e.casas_decimais ?? 3) + ' m³</td>' +
+      '<td colspan="2" style="color:white;font-weight:700;padding:8px 10px">CONSUMO TOTAL</td>' +
+      '<td style="color:white;font-weight:700;font-family:var(--mono)">' +
+      fmtValor(e.consumo_total, casas) + ' m³</td>' +
       '<td colspan="2" style="color:rgba(255,255,255,.6);font-size:11px">' + e.dias_lidos + ' dias lidos</td>' +
       '</tr></tfoot></table></div></div>';
   });
+
   el.innerHTML = html || '<p class="empty-msg">Nenhuma leitura no período.</p>';
 }
+
 
 function relCard(label, valor, tipo) {
   const bg    = tipo === 'warn' ? 'var(--warn-bg)' : 'var(--blue-xlight)';
@@ -2133,7 +2190,65 @@ window.editarMedidor            = editarMedidor;
 window.editarUsuario            = editarUsuario;
 window.atualizarGraficoConsumo  = atualizarGraficoConsumo;
 window.atualizarGraficoPeriodo  = atualizarGraficoPeriodo;
+window.irLancamentoMassa = irLancamentoMassa
 window.irRelatorio              = function(tipo) { Router.go('relatorio'); setTimeout(() => { const sel = document.getElementById('rel-tipo'); if (sel) { sel.value = tipo; alternarFiltrosRelatorio(); } }, 100); };
+
+async function irLancamentoMassa() {
+  if (!Auth.canManage()) return;
+
+  // Se já temos os condomínios carregados no dashboard, usa direto
+  const condos = _dashCondominios && _dashCondominios.length
+    ? _dashCondominios
+    : null;
+
+  if (condos && condos.length === 1) {
+    // Um único condomínio — pré-seleciona e vai direto pra aba massa
+    const condo = condos[0];
+
+    // Busca medidores do condomínio para montar o contexto
+    try {
+      const meds = await API.get('/medidores?condominio_id=' + condo.id);
+      if (meds.length > 0) {
+        // Usa o primeiro medidor como entrada (o usuário troca depois)
+        const m     = meds[0];
+        const label = (m.unidade?.bloco ? m.unidade.bloco + ' · ' : '') +
+                      (m.unidade?.identificador || 'Medidor') +
+                      (m.unidade?.empresa ? ' — ' + m.unidade.empresa : '');
+
+        window._historicoCtx = {
+          medidor_id:      m.id,
+          medidor_label:   label,
+          condominio_id:   condo.id,
+          condominio_nome: condo.nome,
+        };
+
+        Router.go('historico', {
+          medidor_id:      m.id,
+          medidor_label:   label,
+          condominio_id:   condo.id,
+          condominio_nome: condo.nome,
+        });
+
+        // Abre direto na aba de massa após a view carregar
+        setTimeout(() => _historicoSwitchAba('massa'), 300);
+        return;
+      }
+    } catch {}
+  }
+
+  // Mais de 1 condomínio ou falha: abre seleção normal do histórico
+  Router.go('historico');
+  // Após carregar a view, muda a aba para massa automaticamente
+  // O usuário seleciona o condomínio+medidor e já cai na aba certa
+  setTimeout(() => {
+    const abasEl = document.getElementById('historico-abas');
+    // Guarda a preferência para quando o medidor for selecionado
+    window._historicoAbaInicial = 'massa';
+  }, 100);
+}
+
+
+
 window.abrirFoto = abrirFoto;
 
 document.getElementById('btn-logout')?.addEventListener('click', Auth.logout);

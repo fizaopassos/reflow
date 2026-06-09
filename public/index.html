@@ -43,6 +43,8 @@
 
   <!-- ── DASHBOARD ──────────────────────────────────── -->
   <div class="view" id="view-dashboard">
+
+    <!-- ── MOBILE: topbar original ── -->
     <div class="topbar">
       <div class="topbar-inner">
         <img src="/logo.png" alt="Retha" class="logo">
@@ -51,24 +53,28 @@
       <div class="topbar-title">Reflow</div>
       <div class="topbar-sub" id="dashboard-mes"></div>
     </div>
-    <div class="section-header" style="padding-top:20px">
-      <span class="section-title">Condomínios</span>
-    </div>
-    <!-- Desktop only -->
+
+    <!-- ── DESKTOP: header com logo + mês ── -->
     <div class="desktop-header">
-      <div>
-        <h1>Dashboard</h1>
-        <p id="dashboard-mes-desktop"></p>
+      <div class="dash-header-logo">
+        <img src="/logo.png" alt="Retha" class="dash-logo-img">
+        <div>
+          <div class="dash-logo-title">Retha Reflow</div>
+          <div class="dash-logo-sub">Sistema de leitura de medidores</div>
+        </div>
       </div>
-      <div id="desktop-dash-condo-sel"></div>
+      <div class="dash-header-right">
+        <span id="dashboard-mes-desktop" style="font-size:13px;color:var(--text2)"></span>
+        <div id="desktop-dash-condo-sel"></div>
+      </div>
     </div>
 
-    <!-- ── MOBILE: progresso e pendentes ── -->
+    <!-- ── MOBILE: progresso ── -->
     <div id="dash-mobile-content" style="padding:0 16px 16px">
       <div id="dash-progresso-mobile"></div>
     </div>
 
-    <!-- ── LINHA 1: Pendentes ── -->
+    <!-- ── LINHA 1 (desktop): Pendentes ── -->
     <div class="dash-top-row">
       <div class="dash-panel dash-pendentes-card" id="dash-pendentes-wrap">
         <div class="dash-panel-title">Pendentes hoje</div>
@@ -76,14 +82,13 @@
       </div>
     </div>
 
-    <!-- ── LINHA 2: Progresso + Calendário ── -->
+    <!-- ── LINHA 2 (desktop): Progresso + Calendário ── -->
     <div class="dash-grid dash-grid-2col" id="dash-grid">
       <div class="dash-panel">
         <div class="dash-panel-title">Progresso hoje</div>
         <div id="dash-progresso"></div>
       </div>
 
-      <!-- Calendário de leituras -->
       <div class="dash-panel" id="cal-painel" style="display:none">
         <div class="dash-panel-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
           <span>Cobertura de leituras</span>
@@ -106,13 +111,13 @@
       </div>
     </div>
 
-    <!-- ── LINHA 3: Consumo por período + Consumo por empresa ── -->
+    <!-- ── LINHA 3 (desktop): Gráficos ── -->
     <div class="dash-grid dash-grid-2col" id="dash-grid-graficos">
-      <!-- Gráfico de período -->
+
       <div class="dash-panel" id="dash-periodo-painel" style="display:none">
         <div class="dash-panel-title" style="margin-bottom:10px">
           Consumo por período
-          <select id="dash-periodo-tipo" onchange="atualizarGraficoPeriodo()" style="font-size:11px;padding:3px 6px;width:auto;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text2);font-weight:400;text-transform:none;letter-spacing:0">
+          <select id="dash-periodo-tipo" onchange="atualizarGraficoPeriodo()" class="dash-panel-sel">
             <option value="">💧⚡🔥 Todos</option>
             <option value="AGUA">💧 Água</option>
             <option value="ENERGIA">⚡ Energia</option>
@@ -139,55 +144,116 @@
         </div>
       </div>
 
-      <!-- Gráfico consumo mensal (rosca) -->
       <div class="dash-panel">
         <div class="dash-panel-title">
           Consumo por empresa
           <div style="display:flex;gap:6px;align-items:center">
-            <select id="dash-grafico-tipo" onchange="atualizarGraficoConsumo()" style="font-size:11px;padding:3px 6px;width:auto;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text2)">
+            <select id="dash-grafico-tipo" onchange="atualizarGraficoConsumo()" class="dash-panel-sel">
               <option value="">💧⚡🔥 Todos</option>
               <option value="AGUA">💧 Água</option>
               <option value="ENERGIA">⚡ Energia</option>
               <option value="GAS">🔥 Gás</option>
             </select>
-            <select id="dash-grafico-mes" onchange="atualizarGraficoConsumo()"></select>
+            <select id="dash-grafico-mes" onchange="atualizarGraficoConsumo()" class="dash-panel-sel"></select>
           </div>
         </div>
+        <div id="dash-grafico-condo"></div>
         <canvas id="grafico-consumo" height="220"></canvas>
-        <div id="dash-grafico-condo" style="display:none"></div>
       </div>
     </div>
 
-    <!-- ── LINHA 4: Atalhos relatórios ── -->
-    <div class="rel-shortcuts">
-      <button class="rel-shortcut-btn" onclick="irRelatorio('periodo')">
-        <div class="ico">
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M6 2v4M14 2v4M2 9h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        </div>
-        <div><div class="title">Por período</div><div class="desc">Intervalo de datas</div></div>
-      </button>
-      <button class="rel-shortcut-btn" onclick="irRelatorio('mensal')">
-        <div class="ico">
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M4 14l4-4 3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="2" y="2" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
-        </div>
-        <div><div class="title">Acumulado mensal</div><div class="desc">Consumo total do mês</div></div>
-      </button>
-      <button class="rel-shortcut-btn" onclick="irRelatorio('extrato')">
-        <div class="ico">
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M6 6h8M6 10h8M6 14h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="2" y="2" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
-        </div>
-        <div><div class="title">Extrato por unidade</div><div class="desc">Leitura diária</div></div>
-      </button>
-    </div>
+    <!-- ══════════════════════════════════════════════
+         ATALHOS — desktop e mobile
+         ══════════════════════════════════════════════ -->
+    <div class="dash-atalhos-wrap">
 
-    <!-- Mobile: cards normais -->
+      <!-- Relatórios -->
+      <div class="dash-atalhos-secao">
+        <div class="dash-atalhos-label">Relatórios</div>
+        <div class="dash-atalhos-grid dash-atalhos-3">
+          <button class="dash-atalho dash-atalho-purple" onclick="irRelatorio('periodo')">
+            <div class="dash-atalho-ico">
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M6 2v4M14 2v4M2 9h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </div>
+            <div class="dash-atalho-title">Por período</div>
+            <div class="dash-atalho-sub">Intervalo de datas</div>
+          </button>
+          <button class="dash-atalho dash-atalho-teal" onclick="irRelatorio('mensal')">
+            <div class="dash-atalho-ico">
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M4 14l4-4 3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="2" y="2" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
+            </div>
+            <div class="dash-atalho-title">Acumulado mensal</div>
+            <div class="dash-atalho-sub">Consumo total do mês</div>
+          </button>
+          <button class="dash-atalho dash-atalho-blue" onclick="irRelatorio('extrato')">
+            <div class="dash-atalho-ico">
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M6 6h8M6 10h8M6 14h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="2" y="2" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
+            </div>
+            <div class="dash-atalho-title">Extrato por unidade</div>
+            <div class="dash-atalho-sub">Leitura diária</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Leituras — visível para GESTOR e ADMIN -->
+      <div class="dash-atalhos-secao" id="dash-atalhos-leituras" style="display:none">
+        <div class="dash-atalhos-label">Leituras</div>
+        <div class="dash-atalhos-grid dash-atalhos-2">
+          <button class="dash-atalho dash-atalho-amber" onclick="Router.go('historico')">
+            <div class="dash-atalho-ico">
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 4v6l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.5"/></svg>
+            </div>
+            <div class="dash-atalho-title">Histórico</div>
+            <div class="dash-atalho-sub">Leituras por medidor</div>
+          </button>
+          <button class="dash-atalho dash-atalho-coral" onclick="irLancamentoMassa()">
+            <div class="dash-atalho-ico">
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 10h6M10 7v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </div>
+            <div class="dash-atalho-title">Lançamento em massa</div>
+            <div class="dash-atalho-sub">Múltiplos dias de uma vez</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Administração — visível só para ADMIN -->
+      <div class="dash-atalhos-secao" id="dash-atalhos-admin" style="display:none">
+        <div class="dash-atalhos-label">Administração</div>
+        <div class="dash-atalhos-grid dash-atalhos-3">
+          <button class="dash-atalho dash-atalho-green" onclick="Router.go('admin');setTimeout(()=>switchTab('condos'),50)">
+            <div class="dash-atalho-ico">
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="2" y="7" width="16" height="11" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M6 7V5a4 4 0 018 0v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </div>
+            <div class="dash-atalho-title">Condomínios</div>
+            <div class="dash-atalho-sub">Unidades e vínculos</div>
+          </button>
+          <button class="dash-atalho dash-atalho-pink" onclick="Router.go('admin');setTimeout(()=>switchTab('users'),50)">
+            <div class="dash-atalho-ico">
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><circle cx="8" cy="6" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 17c0-3 2.7-5 6-5s6 2 6 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M15 8v6m-3-3h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </div>
+            <div class="dash-atalho-title">Usuários</div>
+            <div class="dash-atalho-sub">Leitores e gestores</div>
+          </button>
+          <button class="dash-atalho dash-atalho-blue2" onclick="Router.go('admin');setTimeout(()=>switchTab('medidores'),50)">
+            <div class="dash-atalho-ico">
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M10 2.5V5M10 15v2.5M2.5 10H5M15 10h2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </div>
+            <div class="dash-atalho-title">Medidores</div>
+            <div class="dash-atalho-sub">Cadastro e séries</div>
+          </button>
+        </div>
+      </div>
+
+    </div><!-- /dash-atalhos-wrap -->
+
+    <!-- Mobile: cards de condomínio (mantido) -->
     <div id="dashboard-cards" class="cards-grid"></div>
-  </div>
+
+  </div><!-- /view-dashboard -->
 
 
   <!-- ── LEITOR ─────────────────────────────────────── -->
   <div class="view" id="view-leitor">
-    <!-- Topbar simples do leitor -->
     <div class="topbar" style="position:sticky;top:0;z-index:10">
       <div class="topbar-inner">
         <img src="/logo.png" alt="Retha" class="logo">
@@ -196,16 +262,10 @@
       <div class="topbar-title">Reflow</div>
       <div class="topbar-sub">Leituras de hoje</div>
     </div>
-
-    <!-- Progresso no topo -->
     <div style="padding:16px 16px 8px">
       <div id="leitor-progresso"></div>
     </div>
-
-    <!-- Lista de medidores -->
     <div id="leitor-lista" style="padding:0 16px 100px"></div>
-
-    <!-- Navbar mínima: só Sair -->
     <nav class="leitor-nav">
       <button onclick="Auth.logout()" class="leitor-nav-btn">
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -244,22 +304,17 @@
         <div id="leitura-empresa-sub" style="font-size:12px;color:var(--text3);margin-top:2px"></div>
       </div>
     </div>
-
     <input type="hidden" id="leitura-medidor-id">
     <input type="hidden" id="leitura-id-edicao">
     <input type="hidden" id="leitura-dia">
     <input type="hidden" id="leitura-mes">
     <input type="hidden" id="leitura-ano">
-
     <div id="leitura-existente" style="display:none;padding:0 16px 14px"></div>
-
-    <!-- Foto obrigatória -->
     <div style="padding:0 16px 6px">
       <div style="font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">
         Foto do medidor <span style="color:var(--danger)">*</span>
       </div>
     </div>
-
     <div class="capture-zone" id="captureZone">
       <input type="file" id="leitura-file" accept="image/*" capture="environment">
       <div id="leitura-idle" class="capture-idle">
@@ -275,8 +330,6 @@
       </div>
       <img id="leitura-preview" alt="Preview do medidor" style="display:none">
     </div>
-
-    <!-- Formulário de leitura -->
     <form id="form-leitura" class="form-leitura" style="display:none">
       <div class="field">
         <label for="leitura-valor-input">Leitura do medidor <span style="color:var(--danger)">*</span></label>
@@ -287,24 +340,14 @@
         <label for="leitura-obs-input">Observações (opcional)</label>
         <input type="text" id="leitura-obs-input" placeholder="ex: medidor com sujeira, difícil leitura">
       </div>
-      <!-- Data retroativa — visível só para admin -->
       <div id="campo-data-retroativa" style="display:none">
         <div style="font-size:11px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;padding:8px 0 0;border-top:1px solid var(--border)">
           Data da leitura (admin)
         </div>
         <div class="form-row">
-          <div class="field">
-            <label>Dia</label>
-            <input type="number" id="leitura-dia-input" min="1" max="31" placeholder="dd">
-          </div>
-          <div class="field">
-            <label>Mês</label>
-            <input type="number" id="leitura-mes-input" min="1" max="12" placeholder="mm">
-          </div>
-          <div class="field">
-            <label>Ano</label>
-            <input type="number" id="leitura-ano-input" min="2024" max="2030" placeholder="aaaa">
-          </div>
+          <div class="field"><label>Dia</label><input type="number" id="leitura-dia-input" min="1" max="31" placeholder="dd"></div>
+          <div class="field"><label>Mês</label><input type="number" id="leitura-mes-input" min="1" max="12" placeholder="mm"></div>
+          <div class="field"><label>Ano</label><input type="number" id="leitura-ano-input" min="2024" max="2030" placeholder="aaaa"></div>
         </div>
       </div>
       <button type="submit" id="form-leitura-submit" class="btn-primary">
@@ -314,7 +357,7 @@
     </form>
   </div>
 
-  <!-- ── HISTÓRICO DE LEITURAS ─────────────────────── -->
+  <!-- ── HISTÓRICO ──────────────────────────────────── -->
   <div class="view" id="view-historico">
     <div class="page-header">
       <button class="btn-back" onclick="voltarDeHistorico()">
@@ -326,8 +369,6 @@
         <div id="historico-sub" style="font-size:12px;color:var(--text3);margin-top:2px"></div>
       </div>
     </div>
-
-    <!-- Seletores — visíveis quando acessado pelo nav -->
     <div id="historico-seletores" style="padding:0 16px 16px;display:none">
       <div class="form-card">
         <div class="field">
@@ -338,23 +379,13 @@
           <label>Medidor</label>
           <select id="hist-sel-medidor"></select>
         </div>
-        <button id="hist-btn-ver" class="btn-primary btn-sm" style="width:auto;margin-top:4px">
-          Ver histórico
-        </button>
+        <button id="hist-btn-ver" class="btn-primary btn-sm" style="width:auto;margin-top:4px">Ver histórico</button>
       </div>
     </div>
-
-    <!-- Abas: Histórico | Lançamento em massa -->
     <div class="hist-abas" id="historico-abas" style="display:none">
-      <button class="hist-tab active" data-aba="historico" onclick="_historicoSwitchAba('historico')">
-        📋 Histórico
-      </button>
-      <button class="hist-tab" data-aba="massa" onclick="_historicoSwitchAba('massa')">
-        ⚡ Lançamento em massa
-      </button>
+      <button class="hist-tab active" data-aba="historico" onclick="_historicoSwitchAba('historico')">📋 Histórico</button>
+      <button class="hist-tab" data-aba="massa" onclick="_historicoSwitchAba('massa')">⚡ Lançamento em massa</button>
     </div>
-
-    <!-- ABA: Histórico -->
     <div id="historico-aba-historico">
       <div id="historico-filtros" class="hist-filtros" style="display:none">
         <select id="hist-filtro-mes" onchange="_historicoCarregar()"></select>
@@ -362,37 +393,19 @@
       </div>
       <div id="historico-lista" style="padding:0 16px 16px"></div>
     </div>
-
-    <!-- ABA: Lançamento em massa -->
     <div id="historico-aba-massa" style="display:none;padding:0 16px 24px">
       <div id="massa-form">
         <div class="form-card" style="margin-bottom:12px">
           <div class="form-row">
-            <div class="field">
-              <label>Data início</label>
-              <input type="date" id="massa-data-ini">
-            </div>
-            <div class="field">
-              <label>Data fim</label>
-              <input type="date" id="massa-data-fim">
-            </div>
+            <div class="field"><label>Data início</label><input type="date" id="massa-data-ini"></div>
+            <div class="field"><label>Data fim</label><input type="date" id="massa-data-fim"></div>
           </div>
-          <button class="btn-secondary btn-sm" style="width:auto" onclick="massaGerarLinhas()">
-            Gerar dias
-          </button>
+          <button class="btn-secondary btn-sm" style="width:auto" onclick="massaGerarLinhas()">Gerar dias</button>
         </div>
-
-        <!-- Linhas geradas dinamicamente -->
         <div id="massa-linhas"></div>
-
-        <!-- Resultado -->
         <div id="massa-resultado"></div>
-
-        <!-- Botão salvar — aparece após gerar linhas -->
         <div id="massa-footer" style="margin-top:12px">
-          <button id="massa-btn-salvar" class="btn-primary" onclick="massaSalvar()">
-            💾 Salvar leituras
-          </button>
+          <button id="massa-btn-salvar" class="btn-primary" onclick="massaSalvar()">💾 Salvar leituras</button>
         </div>
       </div>
     </div>
@@ -401,20 +414,15 @@
   <!-- ── ADMIN ───────────────────────────────────────── -->
   <div class="view" id="view-admin">
     <div class="topbar">
-      <div class="topbar-inner">
-        <img src="/logo.png" alt="Retha" class="logo">
-      </div>
+      <div class="topbar-inner"><img src="/logo.png" alt="Retha" class="logo"></div>
       <div class="topbar-title">Administração</div>
     </div>
-
     <div class="admin-tabs">
       <button class="admin-tab active" onclick="switchTab('condos')">Condomínios</button>
       <button class="admin-tab" onclick="switchTab('unidades')">Unidades</button>
       <button class="admin-tab" onclick="switchTab('medidores')">Medidores</button>
       <button class="admin-tab" onclick="switchTab('users')">Usuários</button>
     </div>
-
-    <!-- Tab: Condomínios -->
     <div class="admin-panel active" id="tab-condos">
       <div class="form-card">
         <button class="btn-accordion" onclick="toggleAccordion('form-body-condo')">
@@ -435,15 +443,11 @@
       <div class="section-header"><span class="section-title">Cadastrados</span></div>
       <div id="admin-condos-list" class="list" style="padding:0 16px 16px"></div>
     </div>
-
-    <!-- Tab: Unidades -->
     <div class="admin-panel" id="tab-unidades">
       <div class="form-card" style="margin-bottom:10px">
         <div class="field" style="margin-bottom:0">
           <label>Filtrar por condomínio</label>
-          <select id="filtro-unidade-condo" onchange="carregarUnidadesAdmin(this.value)">
-            <option value="">Selecione um condomínio...</option>
-          </select>
+          <select id="filtro-unidade-condo" onchange="carregarUnidadesAdmin(this.value)"><option value="">Selecione um condomínio...</option></select>
         </div>
       </div>
       <div class="form-card">
@@ -453,13 +457,10 @@
         </button>
         <div id="form-body-unidade" class="accordion-body" style="display:none">
           <form id="form-nova-unidade">
-            <div class="field">
-              <label>Condomínio</label>
-              <select id="unidade-condo-id" required><option value="">Selecione o condomínio...</option></select>
-            </div>
+            <div class="field"><label>Condomínio</label><select id="unidade-condo-id" required><option value="">Selecione o condomínio...</option></select></div>
             <div class="form-row">
-              <div class="field"><label>Bloco</label><input type="text" id="unidade-bloco" placeholder="ex: Bloco A, Módulo 1"></div>
-              <div class="field"><label>Identificador</label><input type="text" id="unidade-ident" placeholder="ex: Unidade 01, Box 14" required></div>
+              <div class="field"><label>Bloco</label><input type="text" id="unidade-bloco" placeholder="ex: Bloco A"></div>
+              <div class="field"><label>Identificador</label><input type="text" id="unidade-ident" placeholder="ex: Unidade 01" required></div>
             </div>
             <div class="field"><label>Empresa ocupante</label><input type="text" id="unidade-empresa" placeholder="ex: Amazon Logística Ltda"></div>
             <button type="submit" class="btn-primary btn-sm" style="width:auto;margin-top:4px">Salvar</button>
@@ -469,15 +470,11 @@
       <div class="section-header"><span class="section-title">Cadastradas</span></div>
       <div id="admin-unidades-list" class="list" style="padding:0 16px 16px"></div>
     </div>
-
-    <!-- Tab: Medidores -->
     <div class="admin-panel" id="tab-medidores">
       <div class="form-card" style="margin-bottom:10px">
         <div class="field" style="margin-bottom:0">
           <label>Filtrar por condomínio</label>
-          <select id="filtro-medidor-condo" onchange="carregarMedidoresAdmin(this.value)">
-            <option value="">Selecione um condomínio...</option>
-          </select>
+          <select id="filtro-medidor-condo" onchange="carregarMedidoresAdmin(this.value)"><option value="">Selecione um condomínio...</option></select>
         </div>
       </div>
       <div class="form-card">
@@ -487,30 +484,17 @@
         </button>
         <div id="form-body-medidor" class="accordion-body" style="display:none">
           <form id="form-novo-medidor">
-            <div class="field">
-              <label>Condomínio</label>
-              <select id="medidor-condo-id" required><option value="">Selecione o condomínio...</option></select>
-            </div>
-            <div class="field">
-              <label>Unidade</label>
-              <select id="medidor-unidade-id" required><option value="">Selecione a unidade...</option></select>
-            </div>
+            <div class="field"><label>Condomínio</label><select id="medidor-condo-id" required><option value="">Selecione o condomínio...</option></select></div>
+            <div class="field"><label>Unidade</label><select id="medidor-unidade-id" required><option value="">Selecione a unidade...</option></select></div>
             <div class="form-row">
-              <div class="field">
-                <label>Tipo</label>
-                <select id="medidor-tipo">
-                  <option value="AGUA">Água</option>
-                  <option value="ENERGIA">Energia</option>
-                  <option value="GAS">Gás</option>
-                </select>
-              </div>
+              <div class="field"><label>Tipo</label><select id="medidor-tipo"><option value="AGUA">Água</option><option value="ENERGIA">Energia</option><option value="GAS">Gás</option></select></div>
               <div class="field"><label>Nº de série</label><input type="text" id="medidor-serie" placeholder="opcional"></div>
             </div>
             <div class="form-row">
               <div class="field">
                 <label>Casas decimais</label>
                 <select id="medidor-casas">
-                  <option value="0">0 — Inteiro (ex: 51403)</option>
+                  <option value="0">0 — Inteiro</option>
                   <option value="1">1 — ex: 5140,3</option>
                   <option value="2">2 — ex: 5.120,40</option>
                   <option value="3" selected>3 — ex: 4.952,634</option>
@@ -525,8 +509,6 @@
       <div class="section-header"><span class="section-title">Cadastrados</span></div>
       <div id="admin-medidores-list" class="list" style="padding:0 16px 16px"></div>
     </div>
-
-    <!-- Tab: Usuários -->
     <div class="admin-panel" id="tab-users">
       <div class="form-card">
         <button class="btn-accordion" onclick="toggleAccordion('form-body-user')">
@@ -537,14 +519,7 @@
           <form id="form-novo-user">
             <div class="form-row">
               <div class="field"><label>Nome</label><input type="text" id="user-nome" placeholder="Nome completo" required></div>
-              <div class="field">
-                <label>Perfil</label>
-                <select id="user-role">
-                  <option value="LEITOR">Leitor</option>
-                  <option value="GESTOR">Gestor</option>
-                  <option value="ADMIN">Admin</option>
-                </select>
-              </div>
+              <div class="field"><label>Perfil</label><select id="user-role"><option value="LEITOR">Leitor</option><option value="GESTOR">Gestor</option><option value="ADMIN">Admin</option></select></div>
             </div>
             <div class="field"><label>Email</label><input type="email" id="user-email" placeholder="email@exemplo.com" required></div>
             <div class="field"><label>Senha</label><input type="password" id="user-senha" placeholder="Senha inicial" required></div>
@@ -560,19 +535,13 @@
   <!-- ── RELATÓRIOS ───────────────────────────────────── -->
   <div class="view" id="view-relatorio">
     <div class="topbar">
-      <div class="topbar-inner">
-        <img src="/logo.png" alt="Retha" class="logo">
-      </div>
+      <div class="topbar-inner"><img src="/logo.png" alt="Retha" class="logo"></div>
       <div class="topbar-title">Relatórios</div>
     </div>
-
     <div style="padding:16px">
       <div class="form-card">
         <div class="form-row">
-          <div class="field">
-            <label>Condomínio</label>
-            <select id="rel-condo"></select>
-          </div>
+          <div class="field"><label>Condomínio</label><select id="rel-condo"></select></div>
           <div class="field">
             <label>Tipo</label>
             <select id="rel-tipo" onchange="alternarFiltrosRelatorio()">
@@ -582,7 +551,6 @@
             </select>
           </div>
         </div>
-
         <div id="rel-filtros-mensal" class="form-row">
           <div class="field">
             <label>Mês</label>
@@ -595,36 +563,18 @@
               <option value="11">Novembro</option><option value="12">Dezembro</option>
             </select>
           </div>
-          <div class="field">
-            <label>Ano</label>
-            <input type="number" id="rel-ano" value="2026" min="2024" max="2030">
-          </div>
+          <div class="field"><label>Ano</label><input type="number" id="rel-ano" value="2026" min="2024" max="2030"></div>
         </div>
-
         <div id="rel-filtros-extrato" style="display:none">
-          <div class="field">
-            <label>Unidade (deixe vazio para todas)</label>
-            <select id="rel-unidade"><option value="">Todas as unidades</option></select>
-          </div>
+          <div class="field"><label>Unidade (deixe vazio para todas)</label><select id="rel-unidade"><option value="">Todas as unidades</option></select></div>
         </div>
-
         <div id="rel-filtros-periodo" style="display:none">
           <div class="form-row">
-            <div class="field" style="flex:0 0 140px">
-              <label>Data início</label>
-              <input type="date" id="rel-inicio">
-            </div>
-            <div class="field" style="flex:0 0 140px">
-              <label>Data fim</label>
-              <input type="date" id="rel-fim">
-            </div>
-            <div class="field" style="flex:1">
-              <label>Unidade</label>
-              <select id="rel-unidade-periodo"><option value="">Todas as unidades</option></select>
-            </div>
+            <div class="field" style="flex:0 0 140px"><label>Data início</label><input type="date" id="rel-inicio"></div>
+            <div class="field" style="flex:0 0 140px"><label>Data fim</label><input type="date" id="rel-fim"></div>
+            <div class="field" style="flex:1"><label>Unidade</label><select id="rel-unidade-periodo"><option value="">Todas as unidades</option></select></div>
           </div>
         </div>
-
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
           <button class="btn-primary btn-sm" style="flex:1" onclick="gerarRelatorio('json')">Ver relatório</button>
           <button class="btn-secondary btn-sm" onclick="gerarRelatorio('csv')">⬇ CSV</button>
@@ -632,7 +582,6 @@
         </div>
       </div>
     </div>
-
     <div id="rel-resultado" style="padding:0 16px 16px"></div>
   </div>
 
@@ -666,7 +615,6 @@
 
   <div class="toast" id="toast"></div>
 
-  <!-- MODAL DE EDIÇÃO -->
   <div class="modal-backdrop" id="editBackdrop" onclick="fecharModalEdit()"></div>
   <div class="modal" id="editModal">
     <h3 class="modal-title" id="editModalTitle">Editar</h3>
@@ -677,7 +625,6 @@
     </div>
   </div>
 
-  <!-- MODAL DE CONFIRMAÇÃO -->
   <div class="modal-backdrop" id="modalBackdrop" onclick="fecharModal()"></div>
   <div class="modal" id="modal">
     <div class="modal-icon" id="modalIcon"></div>

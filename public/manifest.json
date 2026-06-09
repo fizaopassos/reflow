@@ -1,14 +1,14 @@
 {
-  "name": "Leitor de Medidores",
-  "short_name": "Medidores",
-  "description": "Leitura automática de medidores com IA",
+  "name": "Reflow",
+  "short_name": "Reflow",
+  "description": "Sistema de leitura de medidores de água, energia e gás",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0f1a",
-  "theme_color": "#0a0f1a",
+  "background_color": "#254086",
+  "theme_color": "#254086",
   "orientation": "portrait",
   "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }

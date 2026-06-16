@@ -12,7 +12,6 @@ function fmtValor(valor, casas) {
   return num.toLocaleString('pt-BR', { minimumFractionDigits: c, maximumFractionDigits: c });
 }
 
-// Substitui as duas linhas do new Date no renderRelatorioPeriodo
 function parseDateBR(str) {
   const [a, m, d] = str.split('-');
   return d + '/' + m + '/' + a;
@@ -243,7 +242,6 @@ async function atualizarGraficoConsumo() {
     const unidade = data.unidade_medida || 'm³';
     const CORES = ['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#ec4899','#14b8a6','#a855f7','#f97316','#84cc16'];
 
-    // Área comum recebe cinza; privativos recebem cores normais
     let coresIdx = 0;
     const bgCores = data.dados.map(d =>
       d.area_comum ? COR_AREA_COMUM : CORES[coresIdx++ % CORES.length]
@@ -275,8 +273,6 @@ async function atualizarGraficoConsumo() {
     console.error('Erro ao carregar gráfico de consumo:', e);
   }
 }
-
-
 
 async function atualizarGraficoPeriodo() {
   if (!Auth.canManage()) return;
@@ -324,16 +320,10 @@ async function atualizarGraficoPeriodo() {
 
     const CORES = ['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#ec4899','#14b8a6','#a855f7','#f97316','#84cc16'];
 
-    // Área comum recebe cinza; privativos recebem cores normais
-    let coresIdx = 0;
-    const bgCores     = data.dados.map(d => d.area_comum ? COR_AREA_COMUM + 'cc' : CORES[coresIdx++ % CORES.length] + 'cc');
-    const borderCores = data.dados.map((d, i) => d.area_comum ? COR_AREA_COMUM : CORES[(i < coresIdx ? i : coresIdx - 1) % CORES.length]);
-
-    // Recalcula índices corretamente para border
     let ci = 0;
     const bgFinal     = data.dados.map(d => d.area_comum ? COR_AREA_COMUM + 'cc' : CORES[ci++ % CORES.length] + 'cc');
     ci = 0;
-    const borderFinal = data.dados.map(d => d.area_comum ? COR_AREA_COMUM     : CORES[ci++ % CORES.length]);
+    const borderFinal = data.dados.map(d => d.area_comum ? COR_AREA_COMUM : CORES[ci++ % CORES.length]);
 
     _dashChartPeriodo = new Chart(canvas, {
       type: 'bar',
@@ -385,7 +375,6 @@ async function atualizarGraficoPeriodo() {
     if (msgEl) msgEl.textContent = 'Erro ao carregar dados.';
   }
 }
-
 
 Views.dashboard = async () => {
   const user = Auth.user;
@@ -948,12 +937,11 @@ Views.historico = async ({ medidor_id, medidor_label, condominio_id, condominio_
 
   window._historicoCtx = { medidor_id, medidor_label, condominio_id, condominio_nome };
 
-  const tituloEl   = document.getElementById('historico-titulo');
-  const subEl      = document.getElementById('historico-sub');
-  const seletores  = document.getElementById('historico-seletores');
-  const filtros    = document.getElementById('historico-filtros');
-  const lista      = document.getElementById('historico-lista');
-  const massaPanel = document.getElementById('historico-massa-panel');
+  const tituloEl  = document.getElementById('historico-titulo');
+  const subEl     = document.getElementById('historico-sub');
+  const seletores = document.getElementById('historico-seletores');
+  const filtros   = document.getElementById('historico-filtros');
+  const lista     = document.getElementById('historico-lista');
 
   _historicoSwitchAba('historico');
 
@@ -971,10 +959,9 @@ Views.historico = async ({ medidor_id, medidor_label, condominio_id, condominio_
 
   if (tituloEl) tituloEl.textContent = 'Histórico';
   if (subEl)    subEl.textContent    = 'Selecione o medidor';
-  if (seletores)  seletores.style.display  = '';
-  if (filtros)    filtros.style.display    = 'none';
-  if (massaPanel) massaPanel.style.display = 'none';
-  if (lista)      lista.innerHTML = '';
+  if (seletores) seletores.style.display = '';
+  if (filtros)   filtros.style.display   = 'none';
+  if (lista)     lista.innerHTML = '';
 
   await _historicoPopularSeletores();
 };
@@ -1013,12 +1000,7 @@ async function _historicoPopularSeletores() {
       const medLabel  = selMed.options[selMed.selectedIndex]?.text || 'Medidor';
       if (!condoId || !medId) { toast('Selecione o condomínio e o medidor.', 'warn'); return; }
 
-      window._historicoCtx = {
-        medidor_id:      medId,
-        medidor_label:   medLabel,
-        condominio_id:   condoId,
-        condominio_nome: condoNome,
-      };
+      window._historicoCtx = { medidor_id: medId, medidor_label: medLabel, condominio_id: condoId, condominio_nome: condoNome };
 
       const tituloEl  = document.getElementById('historico-titulo');
       const subEl     = document.getElementById('historico-sub');
@@ -1031,10 +1013,7 @@ async function _historicoPopularSeletores() {
       const abasEl = document.getElementById('historico-abas');
       if (abasEl) abasEl.style.display = '';
 
-      // Usa aba inicial se definida pelo atalho, senão vai para histórico
-      const abaAlvo = window._historicoAbaInicial || 'historico';
-      window._historicoAbaInicial = null;
-      _historicoSwitchAba(abaAlvo);
+      _historicoSwitchAba('historico');
       _historicoPopularFiltros();
       await _historicoCarregar();
     };
@@ -1051,9 +1030,6 @@ function _historicoSwitchAba(aba) {
   };
   tabEls.forEach(t => t.classList.toggle('active', t.dataset.aba === aba));
   Object.entries(panels).forEach(([k, el]) => { if (el) el.style.display = k === aba ? '' : 'none'; });
-  if (aba === 'massa' && window._historicoCtx?.medidor_id) {
-    _massaIniciar();
-  }
 }
 
 function _historicoPopularFiltros() {
@@ -1217,32 +1193,70 @@ function abrirHistoricoBtn(btn) {
   abrirHistorico(btn.dataset.mid, btn.dataset.cid, btn.dataset.cnome);
 }
 
-// ── LANÇAMENTO EM MASSA ───────────────────────────────
-async function _massaIniciar() {
-  const panel = document.getElementById('massa-form');
-  if (!panel) return;
+// ── LANÇAMENTO EM MASSA (view independente) ───────────
+Views.massa = async () => {
+  if (!Auth.canManage()) { Router.go('dashboard'); return; }
 
+  const selCondo = document.getElementById('massa-sel-condo');
+  const selMed   = document.getElementById('massa-sel-medidor');
+  if (!selCondo) return;
+
+  try {
+    const condos = await API.condominios.listar();
+    selCondo.innerHTML = '<option value="">Selecione o condomínio...</option>' +
+      condos.map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
+  } catch {
+    selCondo.innerHTML = '<option value="">Erro ao carregar</option>';
+  }
+
+  selMed.innerHTML = '<option value="">Selecione o medidor...</option>';
+
+  // Datas padrão
   const hoje = new Date();
-  const ini  = new Date(hoje);
-  ini.setDate(ini.getDate() - 6);
-
-  const fmtDate = d => d.toISOString().split('T')[0];
+  const ini  = new Date(hoje); ini.setDate(ini.getDate() - 6);
+  const fmt  = d => d.toISOString().split('T')[0];
   const iniEl = document.getElementById('massa-data-ini');
   const fimEl = document.getElementById('massa-data-fim');
-  if (iniEl && !iniEl.value) iniEl.value = fmtDate(ini);
-  if (fimEl && !fimEl.value) fimEl.value = fmtDate(hoje);
+  if (iniEl) iniEl.value = fmt(ini);
+  if (fimEl) fimEl.value = fmt(hoje);
 
-  document.getElementById('massa-linhas').innerHTML   = '';
+  document.getElementById('massa-linhas').innerHTML    = '';
   document.getElementById('massa-resultado').innerHTML = '';
+  const footer = document.getElementById('massa-footer');
+  if (footer) footer.style.display = 'none';
+};
+
+async function massaCarregarMedidores() {
+  const condoId = document.getElementById('massa-sel-condo')?.value;
+  const selMed  = document.getElementById('massa-sel-medidor');
+  if (!selMed) return;
+  selMed.innerHTML = '<option value="">Carregando...</option>';
+  if (!condoId) { selMed.innerHTML = '<option value="">Selecione o medidor...</option>'; return; }
+  try {
+    const meds = await API.get('/medidores?condominio_id=' + condoId);
+    selMed.innerHTML = '<option value="">Selecione o medidor...</option>' +
+      meds.map(m => {
+        const label = (m.unidade?.bloco ? m.unidade.bloco + ' · ' : '') +
+                      (m.unidade?.identificador || '—') +
+                      (m.unidade?.empresa ? ' — ' + m.unidade.empresa : '');
+        return `<option value="${m.id}" data-casas="${m.casas_decimais ?? 3}">${label}</option>`;
+      }).join('');
+  } catch {
+    selMed.innerHTML = '<option value="">Erro ao carregar</option>';
+  }
 }
 
 async function massaGerarLinhas() {
-  const ctx  = window._historicoCtx;
+  // Suporte tanto à view independente quanto ao histórico (compatibilidade)
+  const medidorIdDireto = document.getElementById('massa-sel-medidor')?.value;
+  const medidorId = medidorIdDireto || window._historicoCtx?.medidor_id;
+
   const iniV = document.getElementById('massa-data-ini')?.value;
   const fimV = document.getElementById('massa-data-fim')?.value;
-  if (!ctx?.medidor_id) { toast('Nenhum medidor selecionado.', 'warn'); return; }
-  if (!iniV || !fimV)   { toast('Preencha as datas.', 'warn'); return; }
-  if (iniV > fimV)      { toast('Data inicial maior que final.', 'warn'); return; }
+
+  if (!medidorId) { toast('Selecione o condomínio e o medidor.', 'warn'); return; }
+  if (!iniV || !fimV) { toast('Preencha as datas.', 'warn'); return; }
+  if (iniV > fimV)    { toast('Data inicial maior que final.', 'warn'); return; }
 
   const ini      = new Date(iniV + 'T00:00:00');
   const fim      = new Date(fimV + 'T00:00:00');
@@ -1262,7 +1276,7 @@ async function massaGerarLinhas() {
     }
     for (const mv of mesesEnvolvidos) {
       const [m, a] = mv.split('/');
-      const res = await API.get('/leituras?medidor_id=' + ctx.medidor_id + '&mes=' + m + '&ano=' + a);
+      const res = await API.get('/leituras?medidor_id=' + medidorId + '&mes=' + m + '&ano=' + a);
       leituraExistentes = leituraExistentes.concat(res);
     }
   } catch {}
@@ -1276,8 +1290,18 @@ async function massaGerarLinhas() {
   });
 
   let casas = 3;
-  try { const m = await API.get('/medidores/' + ctx.medidor_id); casas = m.casas_decimais ?? 3; } catch {}
-  window._massaCasas = casas;
+  try {
+    // Tenta pegar do data-casas do select, senão busca na API
+    const selMed = document.getElementById('massa-sel-medidor');
+    const casasAttr = selMed?.options[selMed.selectedIndex]?.dataset?.casas;
+    casas = casasAttr !== undefined ? parseInt(casasAttr) : 3;
+    if (isNaN(casas)) {
+      const m = await API.get('/medidores/' + medidorId);
+      casas = m.casas_decimais ?? 3;
+    }
+  } catch {}
+  window._massaCasas    = casas;
+  window._massaMedadorId = medidorId;
 
   const diasSemana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
   let html = '';
@@ -1317,6 +1341,10 @@ async function massaGerarLinhas() {
   }
 
   el.innerHTML = html || '<p class="empty-msg">Nenhum dia pendente neste intervalo.</p>';
+
+  const footer = document.getElementById('massa-footer');
+  if (footer) footer.style.display = '';
+
   const primeiro = el.querySelector('.massa-valor-input');
   if (primeiro) setTimeout(() => primeiro.focus(), 100);
 }
@@ -1328,9 +1356,9 @@ function massaFotoPreview(input, key) {
 }
 
 async function massaSalvar() {
-  const ctx   = window._historicoCtx;
-  const casas = window._massaCasas ?? 3;
-  if (!ctx?.medidor_id) { toast('Nenhum medidor selecionado.', 'warn'); return; }
+  const medidorId = window._massaMedadorId;
+  const casas     = window._massaCasas ?? 3;
+  if (!medidorId) { toast('Nenhum medidor selecionado.', 'warn'); return; }
 
   const linhas     = document.querySelectorAll('.massa-linha[data-dia]');
   const paraEnviar = [];
@@ -1357,7 +1385,7 @@ async function massaSalvar() {
   for (const item of paraEnviar) {
     try {
       const form = new FormData();
-      form.append('medidor_id',     ctx.medidor_id);
+      form.append('medidor_id',     medidorId);
       form.append('valor',          item.valor);
       form.append('referencia_dia', item.dia);
       form.append('referencia_mes', item.mes);
@@ -1875,8 +1903,7 @@ function renderRelatorioPeriodo(el, data) {
   const casasResumo = r.casas_decimais ?? 2;
 
   let html = '<div class="rel-header"><h3>Leituras — ' + data.condominio + '</h3>' +
-  '<p>' + parseDateBR(data.data_inicio) + ' a ' + parseDateBR(data.data_fim) + '</p></div>';
-
+    '<p>' + parseDateBR(data.data_inicio) + ' a ' + parseDateBR(data.data_fim) + '</p></div>';
 
   html += '<div class="rel-resumo">' +
     relCard('Total de leituras',  r.total_leituras || 0) +
@@ -1892,18 +1919,17 @@ function renderRelatorioPeriodo(el, data) {
       '<div class="rel-table-wrap"><table class="rel-table">' +
       '<thead><tr><th>Unidade</th><th>Empresa</th><th>Consumo no período</th></tr></thead><tbody>';
 
-   
     data.acumulado.forEach(a => {
-  const casas      = a.casas_decimais ?? 2;
-  const geralStyle = !a.empresa ? 'background:var(--blue-xlight)' : '';
-  const alertStyle = a.alerta ? 'background:#fff7ed;border-left:3px solid #f97316' : '';
-  const rowStyle   = ' style="' + (alertStyle || geralStyle) + '"';
-  const alertaIcon = a.alerta ? ' <span style="color:#f97316;font-weight:700" title="Variação acima de 20%">⚠</span>' : '';
-  html += '<tr' + rowStyle + '>' +
-    '<td><strong>' + (a.bloco ? a.bloco + ' · ' : '') + a.unidade + '</strong></td>' +
-    '<td>' + (a.empresa || '<span style="color:var(--text3);font-style:italic">Geral</span>') + alertaIcon + '</td>' +
-    '<td><strong>' + fmtValor(a.consumo, casas) + '</strong></td></tr>';
-});
+      const casas      = a.casas_decimais ?? 2;
+      const geralStyle = !a.empresa ? 'background:var(--blue-xlight)' : '';
+      const alertStyle = a.alerta ? 'background:#fff7ed;border-left:3px solid #f97316' : '';
+      const rowStyle   = ' style="' + (alertStyle || geralStyle) + '"';
+      const alertaIcon = a.alerta ? ' <span style="color:#f97316;font-weight:700" title="Variação acima de 20%">⚠</span>' : '';
+      html += '<tr' + rowStyle + '>' +
+        '<td><strong>' + (a.bloco ? a.bloco + ' · ' : '') + a.unidade + '</strong></td>' +
+        '<td>' + (a.empresa || '<span style="color:var(--text3);font-style:italic">Geral</span>') + alertaIcon + '</td>' +
+        '<td><strong>' + fmtValor(a.consumo, casas) + '</strong></td></tr>';
+    });
 
     html += '</tbody></table></div></div>';
   }
@@ -1922,10 +1948,10 @@ function renderRelatorioPeriodo(el, data) {
     const varStyle = l.alerta
       ? 'class="text-danger"'
       : (varNum !== null && varNum > 0 ? 'style="color:var(--ok);font-weight:600"' : '');
-    const fotoHtml    = l.foto_url
+    const fotoHtml   = l.foto_url
       ? '<a href="#" onclick="abrirFoto(\'' + l.foto_url + '\', event);return false;" style="color:var(--blue)">📷</a>'
       : '—';
-    const geralStyle  = !l.empresa_snapshot ? ' style="background:var(--blue-xlight)"' : '';
+    const geralStyle = !l.empresa_snapshot ? ' style="background:var(--blue-xlight)"' : '';
 
     html += '<tr class="' + alerta + '"' + geralStyle + '>' +
       '<td><strong>' + (l.bloco ? l.bloco + ' · ' : '') + l.unidade + '</strong></td>' +
@@ -2083,76 +2109,48 @@ async function abrirFoto(fotoUrl, event) {
   if (url) window.open(url, '_blank');
 }
 
-// ── ATALHO: lançamento em massa ───────────────────────
-async function irLancamentoMassa() {
-  if (!Auth.canManage()) return;
-
-  const condos = _dashCondominios && _dashCondominios.length ? _dashCondominios : null;
-
-  if (condos && condos.length === 1) {
-    const condo = condos[0];
-    try {
-      const meds = await API.get('/medidores?condominio_id=' + condo.id);
-      if (meds.length > 0) {
-        const m     = meds[0];
-        const label = (m.unidade?.bloco ? m.unidade.bloco + ' · ' : '') +
-                      (m.unidade?.identificador || 'Medidor') +
-                      (m.unidade?.empresa ? ' — ' + m.unidade.empresa : '');
-
-        window._historicoCtx = { medidor_id: m.id, medidor_label: label, condominio_id: condo.id, condominio_nome: condo.nome };
-        Router.go('historico', { medidor_id: m.id, medidor_label: label, condominio_id: condo.id, condominio_nome: condo.nome });
-        setTimeout(() => _historicoSwitchAba('massa'), 300);
-        return;
-      }
-    } catch {}
-  }
-
-  Router.go('historico');
-  setTimeout(() => { window._historicoAbaInicial = 'massa'; }, 100);
-}
-
 // ── GLOBAIS ───────────────────────────────────────────
-window.Router                    = Router;
-window.abrirHistorico            = abrirHistorico;
-window.massaGerarLinhas          = massaGerarLinhas;
-window.massaSalvar               = massaSalvar;
-window.massaFotoPreview          = massaFotoPreview;
-window._historicoSwitchAba       = _historicoSwitchAba;
-window.abrirHistoricoBtn         = abrirHistoricoBtn;
-window.voltarDeHistorico         = voltarDeHistorico;
-window.historicoIniciarEdicao    = historicoIniciarEdicao;
-window.historicoFecharEdicao     = historicoFecharEdicao;
-window.historicoSalvarEdicao     = historicoSalvarEdicao;
+window.Router                     = Router;
+window.abrirHistorico             = abrirHistorico;
+window.massaCarregarMedidores     = massaCarregarMedidores;
+window.massaGerarLinhas           = massaGerarLinhas;
+window.massaSalvar                = massaSalvar;
+window.massaFotoPreview           = massaFotoPreview;
+window._historicoSwitchAba        = _historicoSwitchAba;
+window.abrirHistoricoBtn          = abrirHistoricoBtn;
+window.voltarDeHistorico          = voltarDeHistorico;
+window.historicoIniciarEdicao     = historicoIniciarEdicao;
+window.historicoFecharEdicao      = historicoFecharEdicao;
+window.historicoSalvarEdicao      = historicoSalvarEdicao;
 window.historicoConfirmarExclusao = historicoConfirmarExclusao;
-window._historicoCarregar        = _historicoCarregar;
-window.Auth                      = Auth;
-window.switchTab                 = switchTab;
-window.switchCondoTab            = switchCondoTab;
-window.toggleCondo               = toggleCondo;
-window.abrirLeitura              = abrirLeitura;
-window.mostrarLeituraExistente   = mostrarLeituraExistente;
-window.iniciarEdicao             = iniciarEdicao;
-window.confirmarExclusao         = confirmarExclusao;
-window.adicionarGestor           = adicionarGestor;
-window.removerGestor             = removerGestor;
-window.adicionarLeitor           = adicionarLeitor;
-window.removerLeitor             = removerLeitor;
-window.fecharModal               = fecharModal;
-window.voltarDeLeitura           = voltarDeLeitura;
-window.carregarUnidadesAdmin     = carregarUnidadesAdmin;
-window.carregarMedidoresAdmin    = carregarMedidoresAdmin;
-window.toggleAccordion           = toggleAccordion;
-window.alternarFiltrosRelatorio  = alternarFiltrosRelatorio;
-window.gerarRelatorio            = gerarRelatorio;
-window.fecharModalEdit           = fecharModalEdit;
-window.editarCondominio          = editarCondominio;
-window.editarUnidade             = editarUnidade;
-window.editarMedidor             = editarMedidor;
-window.editarUsuario             = editarUsuario;
-window.atualizarGraficoConsumo   = atualizarGraficoConsumo;
-window.atualizarGraficoPeriodo   = atualizarGraficoPeriodo;
-window.irLancamentoMassa         = irLancamentoMassa;
-window.irRelatorio               = function(tipo) {
+window._historicoCarregar         = _historicoCarregar;
+window.Auth                       = Auth;
+window.switchTab                  = switchTab;
+window.switchCondoTab             = switchCondoTab;
+window.toggleCondo                = toggleCondo;
+window.abrirLeitura               = abrirLeitura;
+window.mostrarLeituraExistente    = mostrarLeituraExistente;
+window.iniciarEdicao              = iniciarEdicao;
+window.confirmarExclusao          = confirmarExclusao;
+window.adicionarGestor            = adicionarGestor;
+window.removerGestor              = removerGestor;
+window.adicionarLeitor            = adicionarLeitor;
+window.removerLeitor              = removerLeitor;
+window.fecharModal                = fecharModal;
+window.voltarDeLeitura            = voltarDeLeitura;
+window.carregarUnidadesAdmin      = carregarUnidadesAdmin;
+window.carregarMedidoresAdmin     = carregarMedidoresAdmin;
+window.toggleAccordion            = toggleAccordion;
+window.alternarFiltrosRelatorio   = alternarFiltrosRelatorio;
+window.gerarRelatorio             = gerarRelatorio;
+window.fecharModalEdit            = fecharModalEdit;
+window.editarCondominio           = editarCondominio;
+window.editarUnidade              = editarUnidade;
+window.editarMedidor              = editarMedidor;
+window.editarUsuario              = editarUsuario;
+window.atualizarGraficoConsumo    = atualizarGraficoConsumo;
+window.atualizarGraficoPeriodo    = atualizarGraficoPeriodo;
+window.irRelatorio = function(tipo) {
   Router.go('relatorio');
   setTimeout(() => {
     const sel = document.getElementById('rel-tipo');

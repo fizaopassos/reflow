@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -44,7 +43,6 @@
   <!-- ── DASHBOARD ──────────────────────────────────── -->
   <div class="view" id="view-dashboard">
 
-    <!-- ── MOBILE: topbar original ── -->
     <div class="topbar">
       <div class="topbar-inner">
         <img src="/logo.png" alt="Retha" class="logo">
@@ -54,7 +52,6 @@
       <div class="topbar-sub" id="dashboard-mes"></div>
     </div>
 
-    <!-- ── DESKTOP: header com logo + mês ── -->
     <div class="desktop-header">
       <div class="dash-header-logo">
         <img src="/logo.png" alt="Retha" class="dash-logo-img">
@@ -69,12 +66,10 @@
       </div>
     </div>
 
-    <!-- ── MOBILE: progresso ── -->
     <div id="dash-mobile-content" style="padding:0 16px 16px">
       <div id="dash-progresso-mobile"></div>
     </div>
 
-    <!-- ── LINHA 1 (desktop): Pendentes ── -->
     <div class="dash-top-row">
       <div class="dash-panel dash-pendentes-card" id="dash-pendentes-wrap">
         <div class="dash-panel-title">Pendentes hoje</div>
@@ -82,7 +77,6 @@
       </div>
     </div>
 
-    <!-- ── LINHA 2 (desktop): Progresso + Calendário ── -->
     <div class="dash-grid dash-grid-2col" id="dash-grid">
       <div class="dash-panel">
         <div class="dash-panel-title">Progresso hoje</div>
@@ -111,7 +105,6 @@
       </div>
     </div>
 
-    <!-- ── LINHA 3 (desktop): Gráficos ── -->
     <div class="dash-grid dash-grid-2col" id="dash-grid-graficos">
 
       <div class="dash-panel" id="dash-periodo-painel" style="display:none">
@@ -162,12 +155,8 @@
       </div>
     </div>
 
-    <!-- ══════════════════════════════════════════════
-         ATALHOS — desktop e mobile
-         ══════════════════════════════════════════════ -->
     <div class="dash-atalhos-wrap">
 
-      <!-- Relatórios -->
       <div class="dash-atalhos-secao">
         <div class="dash-atalhos-label">Relatórios</div>
         <div class="dash-atalhos-grid dash-atalhos-3">
@@ -195,7 +184,6 @@
         </div>
       </div>
 
-      <!-- Leituras — visível para GESTOR e ADMIN -->
       <div class="dash-atalhos-secao" id="dash-atalhos-leituras" style="display:none">
         <div class="dash-atalhos-label">Leituras</div>
         <div class="dash-atalhos-grid dash-atalhos-2">
@@ -206,7 +194,7 @@
             <div class="dash-atalho-title">Histórico</div>
             <div class="dash-atalho-sub">Leituras por medidor</div>
           </button>
-          <button class="dash-atalho dash-atalho-coral" onclick="irLancamentoMassa()">
+          <button class="dash-atalho dash-atalho-coral" onclick="Router.go('massa')">
             <div class="dash-atalho-ico">
               <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 10h6M10 7v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
             </div>
@@ -216,7 +204,6 @@
         </div>
       </div>
 
-      <!-- Administração — visível só para ADMIN -->
       <div class="dash-atalhos-secao" id="dash-atalhos-admin" style="display:none">
         <div class="dash-atalhos-label">Administração</div>
         <div class="dash-atalhos-grid dash-atalhos-3">
@@ -244,13 +231,11 @@
         </div>
       </div>
 
-    </div><!-- /dash-atalhos-wrap -->
+    </div>
 
-    <!-- Mobile: cards de condomínio (mantido) -->
     <div id="dashboard-cards" class="cards-grid"></div>
 
   </div><!-- /view-dashboard -->
-
 
   <!-- ── LEITOR ─────────────────────────────────────── -->
   <div class="view" id="view-leitor">
@@ -384,7 +369,6 @@
     </div>
     <div class="hist-abas" id="historico-abas" style="display:none">
       <button class="hist-tab active" data-aba="historico" onclick="_historicoSwitchAba('historico')">📋 Histórico</button>
-      <button class="hist-tab" data-aba="massa" onclick="_historicoSwitchAba('massa')">⚡ Lançamento em massa</button>
     </div>
     <div id="historico-aba-historico">
       <div id="historico-filtros" class="hist-filtros" style="display:none">
@@ -393,20 +377,44 @@
       </div>
       <div id="historico-lista" style="padding:0 16px 16px"></div>
     </div>
-    <div id="historico-aba-massa" style="display:none;padding:0 16px 24px">
-      <div id="massa-form">
-        <div class="form-card" style="margin-bottom:12px">
-          <div class="form-row">
-            <div class="field"><label>Data início</label><input type="date" id="massa-data-ini"></div>
-            <div class="field"><label>Data fim</label><input type="date" id="massa-data-fim"></div>
-          </div>
-          <button class="btn-secondary btn-sm" style="width:auto" onclick="massaGerarLinhas()">Gerar dias</button>
+  </div>
+
+  <!-- ── LANÇAMENTO EM MASSA ────────────────────────── -->
+  <div class="view" id="view-massa">
+    <div class="page-header">
+      <button class="btn-back" onclick="Router.go('dashboard')">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 12L6 8l4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        Voltar
+      </button>
+      <div>
+        <h2>Lançamento em massa</h2>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">Múltiplos dias de uma vez</div>
+      </div>
+    </div>
+    <div style="padding:0 16px 24px">
+      <div class="form-card" style="margin-bottom:12px">
+        <div class="field">
+          <label>Condomínio</label>
+          <select id="massa-sel-condo" onchange="massaCarregarMedidores()">
+            <option value="">Selecione o condomínio...</option>
+          </select>
         </div>
-        <div id="massa-linhas"></div>
-        <div id="massa-resultado"></div>
-        <div id="massa-footer" style="margin-top:12px">
-          <button id="massa-btn-salvar" class="btn-primary" onclick="massaSalvar()">💾 Salvar leituras</button>
+        <div class="field">
+          <label>Medidor</label>
+          <select id="massa-sel-medidor">
+            <option value="">Selecione o medidor...</option>
+          </select>
         </div>
+        <div class="form-row">
+          <div class="field"><label>Data início</label><input type="date" id="massa-data-ini"></div>
+          <div class="field"><label>Data fim</label><input type="date" id="massa-data-fim"></div>
+        </div>
+        <button class="btn-secondary btn-sm" style="width:auto" onclick="massaGerarLinhas()">Gerar dias</button>
+      </div>
+      <div id="massa-linhas"></div>
+      <div id="massa-resultado"></div>
+      <div id="massa-footer" style="margin-top:12px;display:none">
+        <button id="massa-btn-salvar" class="btn-primary" onclick="massaSalvar()">💾 Salvar leituras</button>
       </div>
     </div>
   </div>

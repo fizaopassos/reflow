@@ -48,6 +48,11 @@ function calcAreaComum(linhas, campoConsumo = 'consumo_m3') {
   };
 }
 
+function labelUnidade(bloco, identificador, empresa) {
+  const unid = (bloco ? bloco + identificador : identificador);
+  return (unid + (empresa ? ' — ' + empresa : '')).trim();
+}
+
 // ── RELATÓRIO PERÍODO ─────────────────────────────────
 async function periodo(req, res) {
   const { condominio_id, data_inicio, data_fim, formato = 'json' } = req.query;
@@ -207,7 +212,10 @@ async function periodo(req, res) {
     let graficoBuffer = null;
     if (acumulado && acumulado.length > 0) {
       try {
-        const dadosGrafico = acumulado.map(a => ({ label: a.empresa || a.unidade, consumo: a.consumo }));
+        const dadosGrafico = acumulado.map(a => ({
+          label:   labelUnidade(a.bloco, a.unidade, a.empresa),
+          consumo: a.consumo,
+        }));
         graficoBuffer = await gerarGraficoBarras(dadosGrafico, 'm³', 'Consumo por unidade no período');
       } catch (e) {
         console.warn('[PDF] Não foi possível gerar gráfico:', e.message);
@@ -498,7 +506,7 @@ async function consumoGrafico(req, res) {
     const key = l.medidor_id;
     if (!porUnidade[key]) {
       porUnidade[key] = {
-        label:    l.medidor.unidade.empresa || l.medidor.unidade.identificador,
+        label:    labelUnidade(l.medidor.unidade.bloco, l.medidor.unidade.identificador, l.medidor.unidade.empresa),
         empresa:  l.medidor.unidade.empresa,
         unidade:  l.medidor.unidade.identificador,
         bloco:    l.medidor.unidade.bloco,
@@ -527,10 +535,8 @@ async function consumoGrafico(req, res) {
     .filter(u => !u.geral && u.consumo > 0)
     .sort((a, b) => b.consumo - a.consumo);
 
-  const consumoGeral = todos
-    .filter(u => u.geral)
-    .reduce((s, u) => s + u.consumo, 0);
-  const consumoPriv = privativos.reduce((s, u) => s + u.consumo, 0);
+  const consumoGeral = todos.filter(u => u.geral).reduce((s, u) => s + u.consumo, 0);
+  const consumoPriv  = privativos.reduce((s, u) => s + u.consumo, 0);
   const consumoComum = +(consumoGeral - consumoPriv).toFixed(
     todos.reduce((max, u) => Math.max(max, u.casas), 2)
   );
@@ -597,7 +603,7 @@ async function consumoGraficoPeriodo(req, res) {
     const key = l.medidor_id;
     if (!porMedidor[key]) {
       porMedidor[key] = {
-        label:    l.medidor.unidade.empresa || l.medidor.unidade.identificador,
+        label:    labelUnidade(l.medidor.unidade.bloco, l.medidor.unidade.identificador, l.medidor.unidade.empresa),
         empresa:  l.medidor.unidade.empresa,
         tipo:     l.medidor.tipo,
         casas:    l.medidor.casas_decimais ?? 2,

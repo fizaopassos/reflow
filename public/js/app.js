@@ -1892,14 +1892,18 @@ function renderRelatorioPeriodo(el, data) {
       '<div class="rel-table-wrap"><table class="rel-table">' +
       '<thead><tr><th>Unidade</th><th>Empresa</th><th>Consumo no período</th></tr></thead><tbody>';
 
+   
     data.acumulado.forEach(a => {
-      const casas      = a.casas_decimais ?? 2;
-      const geralStyle = !a.empresa ? ' style="background:var(--blue-xlight)"' : '';
-      html += '<tr' + geralStyle + '>' +
-        '<td><strong>' + (a.bloco ? a.bloco + ' · ' : '') + a.unidade + '</strong></td>' +
-        '<td>' + (a.empresa || '<span style="color:var(--text3);font-style:italic">Geral</span>') + '</td>' +
-        '<td><strong>' + fmtValor(a.consumo, casas) + '</strong></td></tr>';
-    });
+  const casas      = a.casas_decimais ?? 2;
+  const geralStyle = !a.empresa ? 'background:var(--blue-xlight)' : '';
+  const alertStyle = a.alerta ? 'background:#fff7ed;border-left:3px solid #f97316' : '';
+  const rowStyle   = ' style="' + (alertStyle || geralStyle) + '"';
+  const alertaIcon = a.alerta ? ' <span style="color:#f97316;font-weight:700" title="Variação acima de 20%">⚠</span>' : '';
+  html += '<tr' + rowStyle + '>' +
+    '<td><strong>' + (a.bloco ? a.bloco + ' · ' : '') + a.unidade + '</strong></td>' +
+    '<td>' + (a.empresa || '<span style="color:var(--text3);font-style:italic">Geral</span>') + alertaIcon + '</td>' +
+    '<td><strong>' + fmtValor(a.consumo, casas) + '</strong></td></tr>';
+});
 
     html += '</tbody></table></div></div>';
   }

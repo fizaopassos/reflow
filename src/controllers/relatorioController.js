@@ -58,13 +58,11 @@ async function periodo(req, res) {
     return res.status(403).json({ erro: 'Acesso negado a este condomínio.' });
   }
 
-  // Parse direto da string YYYY-MM-DD para evitar bug de timezone (UTC midnight → dia anterior em BRT)
   const [iniA, iniM, iniD] = data_inicio.split('-').map(Number);
   const [fimA, fimM, fimD] = data_fim.split('-').map(Number);
   const inicioInt = iniA * 10000 + iniM * 100 + iniD;
   const fimInt    = fimA * 10000 + fimM * 100 + fimD;
 
-  // Usado apenas para exibição (PDF/label) — horário meio-dia evita ambiguidade de timezone
   const inicioDate = new Date(data_inicio + 'T12:00:00');
   const fimDate    = new Date(data_fim    + 'T12:00:00');
 
@@ -111,9 +109,10 @@ async function periodo(req, res) {
     return dataInt >= inicioInt && dataInt <= fimInt;
   });
 
-  const THRESHOLD = parseFloat(req.query.threshold || '50');
+  const THRESHOLD = parseFloat(req.query.threshold || '20');
   const linhas = [];
   const ultimoPorMedidor = {};
+  const alertaPorMedidor = {};
 
   leituras.forEach(l => {
     const anterior = ultimoPorMedidor[l.medidor_id] ?? null;
@@ -121,6 +120,8 @@ async function periodo(req, res) {
     const media    = anterior !== null ? parseFloat(anterior) : null;
     const varPct   = media && media > 0 ? ((variacao / media) * 100) : null;
     const alerta   = varPct !== null && Math.abs(varPct) > THRESHOLD;
+
+    if (alerta) alertaPorMedidor[l.medidor_id] = true;
 
     const casas = l.medidor.casas_decimais ?? 2;
     linhas.push({
@@ -171,6 +172,7 @@ async function periodo(req, res) {
         empresa:        l.empresa_snapshot,
         casas_decimais: casas,
         consumo:        consumo > 0 ? consumo : 0,
+        alerta:         !!alertaPorMedidor[l.medidor_id],
       };
     }
   });
@@ -229,7 +231,7 @@ async function mensal(req, res) {
 
   const mesInt = parseInt(mes);
   const anoInt = parseInt(ano);
-  const THRESHOLD = parseFloat(req.query.threshold || '50');
+  const THRESHOLD = parseFloat(req.query.threshold || '20');
 
   const leituras = await prisma.leitura.findMany({
     where: {
@@ -316,7 +318,7 @@ async function mensal(req, res) {
 
 // ── ALERTAS ───────────────────────────────────────────
 async function alertas(req, res) {
-  const { condominio_id, threshold = '50' } = req.query;
+  const { condominio_id, threshold = '20' } = req.query;
   if (!condominio_id) return res.status(400).json({ erro: 'condominio_id é obrigatório.' });
 
   const THRESHOLD = parseFloat(threshold);
@@ -540,7 +542,6 @@ async function consumoGrafico(req, res) {
   }
 
   const unidadeMedida = tipo === 'ENERGIA' ? 'kWh' : 'm³';
-
   res.json({ mes: mesInt, ano: anoInt, tipo: tipo || 'TODOS', unidade_medida: unidadeMedida, dados });
 }
 
@@ -554,7 +555,6 @@ async function consumoGraficoPeriodo(req, res) {
     return res.status(403).json({ erro: 'Acesso negado.' });
   }
 
-  // Parse direto da string YYYY-MM-DD para evitar bug de timezone
   const [iniA, iniM, iniD] = data_inicio.split('-').map(Number);
   const [fimA, fimM, fimD] = data_fim.split('-').map(Number);
   const inicioInt = iniA * 10000 + iniM * 100 + iniD;
@@ -622,9 +622,7 @@ async function consumoGraficoPeriodo(req, res) {
     .filter(u => !u.geral && u.consumo > 0)
     .sort((a, b) => b.consumo - a.consumo);
 
-  const consumoGeral = todos
-    .filter(u => u.geral)
-    .reduce((s, u) => s + u.consumo, 0);
+  const consumoGeral = todos.filter(u => u.geral).reduce((s, u) => s + u.consumo, 0);
   const consumoPriv  = privativos.reduce((s, u) => s + u.consumo, 0);
   const consumoComum = +(consumoGeral - consumoPriv).toFixed(
     todos.reduce((max, u) => Math.max(max, u.casas), 2)
@@ -638,7 +636,6 @@ async function consumoGraficoPeriodo(req, res) {
   const dados = dadosBase.sort((a, b) => b.consumo - a.consumo);
 
   const unidadeMedida = tipo === 'ENERGIA' ? 'kWh' : 'm³';
-
   res.json({ data_inicio, data_fim, tipo: tipo || 'TODOS', unidade_medida: unidadeMedida, dados });
 }
 

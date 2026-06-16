@@ -24,35 +24,39 @@ function fmtPct(v) {
   return (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
 }
 
-// ── GERAR CSV ─────────────────────────────────────────
+// ── GERAR CSV — separador ponto-e-vírgula para compatibilidade pt-BR ──
 function gerarCSVPeriodo(leituras) {
-  const header = ['Unidade','Bloco','Empresa','Data','Valor (m³)','Variação (m³)','Leitor','Método'];
+  const sep = ';';
+  const header = ['Unidade','Bloco','Empresa','Data','Valor (m3)','Variacao (m3)','Alerta','Leitor','Metodo'];
   const rows = leituras.map(l => [
     l.unidade,
     l.bloco || '',
     l.empresa_snapshot || '',
-    `${String(l.referencia_dia).padStart(2,'0')}/${String(l.referencia_mes).padStart(2,'0')}/${l.referencia_ano}`,
-    fmtValor(l.valor),
-    l.variacao !== null ? fmtValor(l.variacao) : '',
+    String(l.referencia_dia).padStart(2,'0') + '/' + String(l.referencia_mes).padStart(2,'0') + '/' + l.referencia_ano,
+    fmtValor(l.valor, l.casas_decimais ?? 3),
+    l.variacao !== null ? fmtValor(l.variacao, l.casas_decimais ?? 3) : '',
+    l.alerta ? 'SIM' : '',
     l.leitor,
     l.metodo,
   ]);
-  return [header, ...rows].map(r => r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(',')).join('\n');
+  return [header, ...rows].map(r => r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(sep)).join('\n');
 }
 
 function gerarCSVMensal(linhas, mes, ano) {
-  const header = ['Unidade','Bloco','Empresa','Dias lidos','1ª leitura (m³)','Última leitura (m³)','Consumo acumulado (m³)','Variação %'];
+  const sep = ';';
+  const header = ['Unidade','Bloco','Empresa','Dias lidos','1a leitura (m3)','Ultima leitura (m3)','Consumo acumulado (m3)','Variacao %','Alerta'];
   const rows = linhas.map(l => [
     l.unidade,
     l.bloco || '',
     l.empresa || '',
     l.dias_lidos,
-    fmtValor(l.primeira_leitura),
-    fmtValor(l.ultima_leitura),
-    fmtValor(l.consumo_m3),
+    fmtValor(l.primeira_leitura, l.casas_decimais ?? 3),
+    fmtValor(l.ultima_leitura,   l.casas_decimais ?? 3),
+    fmtValor(l.consumo_m3,       l.casas_decimais ?? 3),
     l.variacao_pct !== null ? fmtPct(l.variacao_pct) : 'N/D',
+    l.alerta ? 'SIM' : '',
   ]);
-  return [header, ...rows].map(r => r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(',')).join('\n');
+  return [header, ...rows].map(r => r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(sep)).join('\n');
 }
 
 // ── GERAR PDF PERÍODO ─────────────────────────────────
@@ -64,7 +68,6 @@ function gerarPDFPeriodo(leituras, { condominio, dataInicio, dataFim }, res, acu
 
   _cabecalho(doc, 'Relatório de Leituras — Período', condominio, `${fmtData(dataInicio)} a ${fmtData(dataFim)}`);
 
-  // Resumo box
   if (resumo) {
     doc.roundedRect(40, doc.y, 515, 50, 4).fillAndStroke('#f0f4ff', '#c4cde8');
     const ry = doc.y - 46;
@@ -81,24 +84,23 @@ function gerarPDFPeriodo(leituras, { condominio, dataInicio, dataFim }, res, acu
     doc.fillColor('#1a2036');
   }
 
-  // Tabela acumulado por unidade
   if (acumulado && acumulado.length) {
     doc.fontSize(10).font('Helvetica-Bold').fillColor('#254086').text('Acumulado por unidade', 40);
     doc.moveDown(0.3);
-    const colsAcum = [200, 200, 115];
-    _tabelaHeader(doc, colsAcum, ['Unidade', 'Empresa', 'Consumo no período']);
+    const colsAcum = [200, 200, 80, 35];
+    _tabelaHeader(doc, colsAcum, ['Unidade', 'Empresa', 'Consumo no período', '⚠']);
     acumulado.forEach((a, i) => {
       const casas = a.casas_decimais ?? 3;
       _tabelaLinha(doc, colsAcum, [
         (a.bloco ? a.bloco + ' · ' : '') + a.unidade,
         a.empresa || '—',
         fmtValor(a.consumo, casas),
-      ], i % 2 === 0, null);
+        a.alerta ? '⚠' : '',
+      ], i % 2 === 0, a.alerta ? '#dc2626' : null);
     });
     doc.moveDown(1);
   }
 
-  // ── Gráfico de consumo (se disponível) ──
   if (graficoBuffer) {
     try {
       if (doc.y > 420) doc.addPage();
@@ -111,12 +113,9 @@ function gerarPDFPeriodo(leituras, { condominio, dataInicio, dataFim }, res, acu
       doc.image(graficoBuffer, 40, doc.y, { width: imgWidth });
       doc.y += imgHeight + 12;
       doc.moveDown(0.5);
-    } catch (e) {
-      // Silencia erro de imagem para não quebrar o PDF
-    }
+    } catch (e) {}
   }
 
-  // Tabela leituras diárias
   doc.fontSize(10).font('Helvetica-Bold').fillColor('#254086').text('Leituras detalhadas');
   doc.moveDown(0.3);
   const cols = [120, 75, 85, 70, 75, 45, 45];
@@ -295,14 +294,15 @@ function _rodape(doc) {
 
 // ── CSV EXTRATO ───────────────────────────────────────
 function gerarCSVExtrato(extratos, mes, ano) {
+  const sep = ';';
   const lines = [];
   extratos.forEach(e => {
     const titulo = (e.bloco ? e.bloco + ' · ' : '') + e.unidade + (e.empresa ? ' — ' + e.empresa : '');
     lines.push(['"' + titulo + '"']);
-    lines.push(['"Data"','"Dia"','"Valor m³"','"Consumo dia m³"','"Leitor"','"Foto"'].join(','));
+    lines.push(['"Data"','"Dia"','"Valor m3"','"Consumo dia m3"','"Leitor"','"Foto"'].join(sep));
     e.linhas.forEach(l => {
       if (l.sem_leitura) {
-        lines.push(['"' + l.data + '"', '"' + l.dia_semana + '"', '"Sem leitura"', '""', '""', '""'].join(','));
+        lines.push(['"' + l.data + '"', '"' + l.dia_semana + '"', '"Sem leitura"', '""', '""', '""'].join(sep));
       } else {
         lines.push([
           '"' + l.data + '"',
@@ -311,10 +311,10 @@ function gerarCSVExtrato(extratos, mes, ano) {
           '"' + (l.consumo !== null ? fmtValor(l.consumo) : '—') + '"',
           '"' + (l.leitor || '') + '"',
           '"' + (l.tem_foto ? 'Sim' : 'Não') + '"',
-        ].join(','));
+        ].join(sep));
       }
     });
-    lines.push(['"CONSUMO TOTAL"', '""', '""', '"' + fmtValor(e.consumo_total) + '"', '""', '""'].join(','));
+    lines.push(['"CONSUMO TOTAL"', '""', '""', '"' + fmtValor(e.consumo_total) + '"', '""', '""'].join(sep));
     lines.push(['']);
   });
   return lines.join('\n');

@@ -1,4 +1,4 @@
-const CACHE = 'medidor-v1';
+const CACHE = 'medidor-v2';
 const ASSETS = ['/', '/index.html', '/css/app.css', '/js/api.js', '/js/app.js'];
 
 self.addEventListener('install', e => {

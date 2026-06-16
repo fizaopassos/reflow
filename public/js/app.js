@@ -12,6 +12,12 @@ function fmtValor(valor, casas) {
   return num.toLocaleString('pt-BR', { minimumFractionDigits: c, maximumFractionDigits: c });
 }
 
+// Substitui as duas linhas do new Date no renderRelatorioPeriodo
+function parseDateBR(str) {
+  const [a, m, d] = str.split('-');
+  return d + '/' + m + '/' + a;
+}
+
 function fmtVar(variacao, casas) {
   if (variacao === null || variacao === undefined) return '—';
   const c = casas !== undefined ? casas : 3;
@@ -1869,8 +1875,8 @@ function renderRelatorioPeriodo(el, data) {
   const casasResumo = r.casas_decimais ?? 2;
 
   let html = '<div class="rel-header"><h3>Leituras — ' + data.condominio + '</h3>' +
-    '<p>' + new Date(data.data_inicio).toLocaleDateString('pt-BR') +
-    ' a ' + new Date(data.data_fim).toLocaleDateString('pt-BR') + '</p></div>';
+  '<p>' + parseDateBR(data.data_inicio) + ' a ' + parseDateBR(data.data_fim) + '</p></div>';
+
 
   html += '<div class="rel-resumo">' +
     relCard('Total de leituras',  r.total_leituras || 0) +

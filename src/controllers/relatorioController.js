@@ -58,12 +58,15 @@ async function periodo(req, res) {
     return res.status(403).json({ erro: 'Acesso negado a este condomínio.' });
   }
 
-  const inicio = new Date(data_inicio);
-  const fim    = new Date(data_fim);
+  // Parse direto da string YYYY-MM-DD para evitar bug de timezone (UTC midnight → dia anterior em BRT)
+  const [iniA, iniM, iniD] = data_inicio.split('-').map(Number);
+  const [fimA, fimM, fimD] = data_fim.split('-').map(Number);
+  const inicioInt = iniA * 10000 + iniM * 100 + iniD;
+  const fimInt    = fimA * 10000 + fimM * 100 + fimD;
 
-  const toInt = (d) => d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
-  const inicioInt = toInt(inicio);
-  const fimInt    = toInt(fim);
+  // Usado apenas para exibição (PDF/label) — horário meio-dia evita ambiguidade de timezone
+  const inicioDate = new Date(data_inicio + 'T12:00:00');
+  const fimDate    = new Date(data_fim    + 'T12:00:00');
 
   const { unidade_id } = req.query;
 
@@ -208,7 +211,7 @@ async function periodo(req, res) {
         console.warn('[PDF] Não foi possível gerar gráfico:', e.message);
       }
     }
-    return gerarPDFPeriodo(linhas, { condominio: condo?.nome || '', dataInicio: inicio, dataFim: fim }, res, acumulado, resumo, graficoBuffer);
+    return gerarPDFPeriodo(linhas, { condominio: condo?.nome || '', dataInicio: inicioDate, dataFim: fimDate }, res, acumulado, resumo, graficoBuffer);
   }
 
   res.json({ condominio: condo?.nome, data_inicio, data_fim, resumo, area_comum: areaComum, acumulado, leituras: linhas });
@@ -461,7 +464,6 @@ async function extrato(req, res) {
 }
 
 // ── GRÁFICO DONUT — consumo por empresa (mensal) ──────
-// Privativos nas cores normais + fatia "Área comum" em cinza
 async function consumoGrafico(req, res) {
   const { condominio_id, mes, ano, tipo } = req.query;
   if (!condominio_id) return res.status(400).json({ erro: 'condominio_id é obrigatório.' });
@@ -508,7 +510,6 @@ async function consumoGrafico(req, res) {
     }
   });
 
-  // Separa privativos e geral
   const todos = Object.values(porUnidade).map(u => ({
     label:    u.label,
     empresa:  u.empresa,
@@ -520,12 +521,10 @@ async function consumoGrafico(req, res) {
     casas:    u.casas,
   }));
 
-  // Privativos ordenados por consumo
   const privativos = todos
     .filter(u => !u.geral && u.consumo > 0)
     .sort((a, b) => b.consumo - a.consumo);
 
-  // Calcula área comum: consumo_geral - soma_privativos
   const consumoGeral = todos
     .filter(u => u.geral)
     .reduce((s, u) => s + u.consumo, 0);
@@ -534,7 +533,6 @@ async function consumoGrafico(req, res) {
     todos.reduce((max, u) => Math.max(max, u.casas), 2)
   );
 
-  // Monta dados finais: privativos + área comum (se existir medidor geral)
   const dados = [...privativos];
   const temGeral = todos.some(u => u.geral);
   if (temGeral && consumoComum > 0) {
@@ -547,7 +545,6 @@ async function consumoGrafico(req, res) {
 }
 
 // ── GRÁFICO BARRAS — consumo por período ──────────────
-// Privativos nas cores normais + barra "Área comum" em cinza
 async function consumoGraficoPeriodo(req, res) {
   const { condominio_id, data_inicio, data_fim, tipo } = req.query;
   if (!condominio_id || !data_inicio || !data_fim) {
@@ -557,9 +554,11 @@ async function consumoGraficoPeriodo(req, res) {
     return res.status(403).json({ erro: 'Acesso negado.' });
   }
 
-  const toInt = d => d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
-  const inicioInt = toInt(new Date(data_inicio));
-  const fimInt    = toInt(new Date(data_fim));
+  // Parse direto da string YYYY-MM-DD para evitar bug de timezone
+  const [iniA, iniM, iniD] = data_inicio.split('-').map(Number);
+  const [fimA, fimM, fimD] = data_fim.split('-').map(Number);
+  const inicioInt = iniA * 10000 + iniM * 100 + iniD;
+  const fimInt    = fimA * 10000 + fimM * 100 + fimD;
 
   const wheremedidor = { unidade: { condominio_id } };
   if (tipo && ['AGUA','ENERGIA','GAS'].includes(tipo)) wheremedidor.tipo = tipo;
@@ -633,9 +632,9 @@ async function consumoGraficoPeriodo(req, res) {
 
   const temGeral = todos.some(u => u.geral);
   const dadosBase = [...privativos];
-    if (temGeral && consumoComum > 0) {
-  dadosBase.push({ label: 'Área comum', consumo: consumoComum, area_comum: true });
-   }
+  if (temGeral && consumoComum > 0) {
+    dadosBase.push({ label: 'Área comum', consumo: consumoComum, area_comum: true });
+  }
   const dados = dadosBase.sort((a, b) => b.consumo - a.consumo);
 
   const unidadeMedida = tipo === 'ENERGIA' ? 'kWh' : 'm³';

@@ -92,6 +92,8 @@ const Router = {
       Router.go(Auth.is('LEITOR') ? 'leitor' : 'dashboard');
       return;
     }
+
+    
     if (Auth.is('LEITOR') && !['leitor','leitura'].includes(page)) {
       Router.go('leitor');
       return;
@@ -846,11 +848,10 @@ Views.leitor = async () => {
   const mesHoje = agora.getMonth() + 1;
   const anoHoje = agora.getFullYear();
 
-  const nomeEl = document.getElementById('leitor-nome');
-  if (nomeEl) nomeEl.textContent = user?.nome || '';
-
+  const nomeEl      = document.getElementById('leitor-nome');
   const progressoEl = document.getElementById('leitor-progresso');
   const listaEl     = document.getElementById('leitor-lista');
+  if (nomeEl) nomeEl.textContent = user?.nome || '';
   if (!listaEl) return;
 
   listaEl.innerHTML = '<p class="loading-msg">Carregando...</p>';
@@ -862,9 +863,55 @@ Views.leitor = async () => {
       return;
     }
 
-    const condo = data.condominios[0];
-    window._leitorCondoId   = condo.id;
+    if (!window._leitorCondoId || !data.condominios.find(c => c.id === window._leitorCondoId)) {
+      window._leitorCondoId = data.condominios[0].id;
+    }
+
+    // ── Seletor mobile (topbar azul) ──
+    const topbarSub = document.getElementById('leitor-topbar-sub');
+    if (topbarSub) {
+      if (data.condominios.length > 1) {
+        const opts = data.condominios.map(c =>
+          '<option value="' + c.id + '"' + (c.id === window._leitorCondoId ? ' selected' : '') + '>' + c.nome + '</option>'
+        ).join('');
+        topbarSub.innerHTML = '<select id="leitor-condo-sel" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;padding:3px 8px;font-size:13px;font-family:var(--sans);width:100%;margin-top:4px">' + opts + '</select>';
+        document.getElementById('leitor-condo-sel').addEventListener('change', function() {
+          window._leitorCondoId = this.value;
+          Views.leitor();
+        });
+      } else {
+        topbarSub.textContent = 'Leituras de hoje';
+        window._leitorCondoId = data.condominios[0].id;
+      }
+    }
+
+    // ── Seletor desktop (acima do progresso, renderiza só uma vez) ──
+    if (data.condominios.length > 1) {
+      const jaExiste = document.getElementById('leitor-condo-sel-desktop');
+      if (!jaExiste && progressoEl) {
+        const opts = data.condominios.map(c =>
+          '<option value="' + c.id + '"' + (c.id === window._leitorCondoId ? ' selected' : '') + '>' + c.nome + '</option>'
+        ).join('');
+        const wrap = document.createElement('div');
+        wrap.id = 'leitor-desktop-sel-wrap';
+        wrap.style.cssText = 'padding:16px 16px 0';
+        wrap.innerHTML = '<select id="leitor-condo-sel-desktop" style="width:100%;padding:10px 14px;font-size:14px;font-weight:600;border-radius:var(--radius);border:1.5px solid var(--border2);background:var(--bg2);color:var(--text)">' + opts + '</select>';
+        progressoEl.parentNode.insertBefore(wrap, progressoEl);
+        document.getElementById('leitor-condo-sel-desktop').addEventListener('change', function() {
+          window._leitorCondoId = this.value;
+          // remove o wrap para recriar com o valor correto no próximo render
+          document.getElementById('leitor-desktop-sel-wrap')?.remove();
+          Views.leitor();
+        });
+      } else if (jaExiste) {
+        jaExiste.value = window._leitorCondoId;
+      }
+    }
+
+    const condo = data.condominios.find(c => c.id === window._leitorCondoId) || data.condominios[0];
     window._leitorCondoNome = condo.nome;
+
+    listaEl.innerHTML = '<p class="loading-msg">Carregando medidores...</p>';
 
     const [medidores, leituras] = await Promise.all([
       API.get('/medidores?condominio_id=' + condo.id),

@@ -502,28 +502,41 @@ Views.medicoes = async ({ condominio_id, nome }) => {
       }
     });
 
-    const nomeSeguro = nome.replace(/"/g, '');
+   const nomeSeguro = nome.replace(/"/g, '');
     el.innerHTML = medidores.map(m => {
       const { leituraHoje, ultimaLeitura } = mapaLeituras[m.id] || {};
-      const tipoIcon  = { AGUA: '💧', ENERGIA: '⚡', GAS: '🔥' }[m.tipo] || '📊';
-      const temAlerta = alertasMedidores.has(m.id);
-      const badge     = leituraHoje
-        ? '<span class="badge badge-ok">Hoje ✓</span>'
-        : '<span class="badge badge-pend">Pendente hoje</span>';
+      const tipoIcon   = { AGUA: '💧', ENERGIA: '⚡', GAS: '🔥' }[m.tipo] || '📊';
+      const temAlerta  = alertasMedidores.has(m.id);
+      const casas      = m.casas_decimais !== undefined ? m.casas_decimais : 3;
+      const titulo     = (m.unidade?.bloco ? m.unidade.bloco + ' · ' : '') + (m.unidade?.identificador || '—');
+      const empresa    = m.unidade?.empresa || '';
+
+      if (leituraHoje) {
+        return '<div class="card-medidor-lido" onclick="abrirLeitura(\'' + m.id + '\',\'' + condominio_id + '\',\'' + nome.replace(/'/g,'') + '\')">' +
+          '<div class="card-medidor-lido-titulo">' +
+            '<span>✅</span>' +
+            '<span>' + tipoIcon + ' ' + titulo + (empresa ? ' <span style="font-weight:400;color:var(--text3)">· ' + empresa + '</span>' : '') + '</span>' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">' +
+            '<span class="card-medidor-lido-valor">' + fmtValor(leituraHoje.valor, casas) + '</span>' +
+            '<span class="badge badge-ok" style="font-size:10px">✓ Lido</span>' +
+          '</div>' +
+        '</div>';
+      }
+
       const alertaBadge = temAlerta ? ' <span class="badge badge-alerta">⚠ Variação</span>' : '';
-      const casas       = m.casas_decimais !== undefined ? m.casas_decimais : 3;
       const ultimaInfo  = ultimaLeitura
         ? '<span>Última: <strong>' + fmtValor(ultimaLeitura.valor, casas) + '</strong> — ' +
           diaSemana(ultimaLeitura.referencia_dia, ultimaLeitura.referencia_mes, ultimaLeitura.referencia_ano) + ' ' +
           String(ultimaLeitura.referencia_dia).padStart(2,'0') + '/' + String(ultimaLeitura.referencia_mes).padStart(2,'0') + '</span>'
         : '<span style="color:var(--text3)">Sem leituras no mês</span>';
-      const titulo  = (m.unidade?.bloco ? m.unidade.bloco + ' · ' : '') + (m.unidade?.identificador || '—');
-      const empresa = m.unidade?.empresa || '';
-      return '<div class="card card-medidor" onclick="abrirLeitura(\'' + m.id + '\',\'' + condominio_id + '\',\'' + nome.replace(/'/g,'') + '\')">' +
+
+      return '<div class="card card-medidor pendente" onclick="abrirLeitura(\'' + m.id + '\',\'' + condominio_id + '\',\'' + nome.replace(/'/g,'') + '\')">' +
         '<div class="card-header"><div>' +
         '<div class="card-title">' + tipoIcon + ' ' + titulo + '</div>' +
         (empresa ? '<div style="font-size:12px;color:var(--text3)">' + empresa + '</div>' : '') +
-        '</div>' + badge + alertaBadge + '</div>' +
+        '</div>' +
+        '<span class="badge badge-pend">Pendente hoje</span>' + alertaBadge + '</div>' +
         '<div class="card-meta"><span>Série: ' + (m.numero_serie || '—') + '</span>' + ultimaInfo + '</div>' +
         (Auth.canManage() ? '<div style="padding:8px 0 0;border-top:1px solid var(--border);margin-top:8px"><button class="btn-historico" data-mid="' + m.id + '" data-cid="' + condominio_id + '" data-cnome="' + nomeSeguro + '" onclick="event.stopPropagation();abrirHistoricoBtn(this)">📋 Ver histórico</button></div>' : '') +
         '</div>';

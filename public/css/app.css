@@ -481,3 +481,38 @@ input::placeholder { color: var(--text3); }
   .rel-area-comum-grid { gap: 8px; }
   .rel-area-comum-val  { font-size: 15px; }
 }
+
+/* ── CARD MEDIDOR LIDO (colapsado) ── */
+.card-medidor-lido {
+  background: var(--ok-bg);
+  border: 1.5px solid rgba(13,158,110,.30);
+  border-left: 4px solid var(--ok);
+  border-radius: var(--radius-lg);
+  padding: 10px 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  box-shadow: none;
+  transition: box-shadow .2s, opacity .2s;
+  opacity: .85;
+}
+.card-medidor-lido:hover {
+  box-shadow: var(--shadow-sm);
+  opacity: 1;
+}
+.card-medidor-lido-titulo {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.card-medidor-lido-valor {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ok);
+}
